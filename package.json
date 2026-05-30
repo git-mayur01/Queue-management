@@ -1,0 +1,19 @@
+{
+  "name": "local-restaurant-order-management",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline local-network restaurant order management system for cashier and kitchen displays.",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "start": "npm run start -w backend",
+    "build": "npm run build -w frontend",
+    "test": "npm run test -w backend && npm run build -w frontend"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  },
+  "workspaces": [
+    "backend",
+    "frontend"
+  ]
+}
