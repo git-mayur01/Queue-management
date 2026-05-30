@@ -15,5 +15,8 @@
   "workspaces": [
     "backend",
     "frontend"
-  ]
+  ],
+  "allowScripts": {
+    "better-sqlite3@12.10.0": true
+  }
 }

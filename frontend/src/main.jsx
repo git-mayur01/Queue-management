@@ -5,6 +5,8 @@ import App from './App.jsx';
 import CashierPage from './pages/CashierPage.jsx';
 import KitchenPage from './pages/KitchenPage.jsx';
 import DisplayPage from './pages/DisplayPage.jsx';
+import MenuPage from './pages/MenuPage.jsx';
+import AdminPage from './pages/AdminPage.jsx';
 import './styles.css';
 
 createRoot(document.getElementById('root')).render(
@@ -16,6 +18,8 @@ createRoot(document.getElementById('root')).render(
           <Route path="cashier" element={<CashierPage />} />
           <Route path="kitchen" element={<KitchenPage />} />
           <Route path="display" element={<DisplayPage />} />
+          <Route path="menu" element={<MenuPage />} />
+          <Route path="admin" element={<AdminPage />} />
           <Route path="*" element={<main className="page"><h1>Page not found</h1><Link to="/cashier">Go to Cashier</Link></main>} />
         </Route>
       </Routes>

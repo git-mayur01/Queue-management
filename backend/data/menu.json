@@ -1,11 +1,331 @@
 [
-  "Veg Cocktail",
-  "Veg Momos",
-  "Paneer Momos",
-  "Fried Rice",
-  "Manchurian Rice",
-  "Hakka Noodles",
-  "Schezwan Noodles",
-  "Pizza",
-  "Cold Drink"
+  {
+    "name": "Veg Noodles",
+    "halfPrice": 40,
+    "fullPrice": 70,
+    "available": true,
+    "category": "NOODLES"
+  },
+  {
+    "name": "Manchurian Noodles",
+    "halfPrice": 50,
+    "fullPrice": 90,
+    "available": true,
+    "category": "NOODLES"
+  },
+  {
+    "name": "Hakka Noodles",
+    "halfPrice": 50,
+    "fullPrice": 80,
+    "available": true,
+    "category": "NOODLES"
+  },
+  {
+    "name": "Hakka Manchurian",
+    "halfPrice": 60,
+    "fullPrice": 100,
+    "available": true,
+    "category": "NOODLES"
+  },
+  {
+    "name": "Paneer Noodles",
+    "halfPrice": 60,
+    "fullPrice": 100,
+    "available": true,
+    "category": "NOODLES"
+  },
+  {
+    "name": "Paneer Hakka Noodles",
+    "halfPrice": 60,
+    "fullPrice": 100,
+    "available": true,
+    "category": "NOODLES"
+  },
+  {
+    "name": "Schezwan Manchurian Noodles",
+    "halfPrice": 60,
+    "fullPrice": 100,
+    "available": true,
+    "category": "NOODLES"
+  },
+  {
+    "name": "Paneer Schezwan Noodles",
+    "halfPrice": 60,
+    "fullPrice": 100,
+    "available": true,
+    "category": "NOODLES"
+  },
+  {
+    "name": "Schezwan Noodles",
+    "halfPrice": 50,
+    "fullPrice": 80,
+    "available": true,
+    "category": "NOODLES"
+  },
+  {
+    "name": "Fried Rice",
+    "halfPrice": 40,
+    "fullPrice": 70,
+    "available": true,
+    "category": "RICE"
+  },
+  {
+    "name": "Manchurian Rice",
+    "halfPrice": 50,
+    "fullPrice": 90,
+    "available": true,
+    "category": "RICE"
+  },
+  {
+    "name": "Paneer Rice",
+    "halfPrice": 60,
+    "fullPrice": 100,
+    "available": true,
+    "category": "RICE"
+  },
+  {
+    "name": "Paneer Manchurian Rice",
+    "halfPrice": 70,
+    "fullPrice": 130,
+    "available": true,
+    "category": "RICE"
+  },
+  {
+    "name": "Schezwan Manchurian Rice",
+    "halfPrice": 60,
+    "fullPrice": 110,
+    "available": true,
+    "category": "RICE"
+  },
+  {
+    "name": "Schezwan Paneer Rice",
+    "halfPrice": 70,
+    "fullPrice": 120,
+    "available": true,
+    "category": "RICE"
+  },
+  {
+    "name": "Cocktail Rice",
+    "halfPrice": 60,
+    "fullPrice": 100,
+    "available": true,
+    "category": "RICE"
+  },
+  {
+    "name": "Aloo Tikki Burger",
+    "halfPrice": 0,
+    "fullPrice": 70,
+    "available": true,
+    "category": "BURGERS"
+  },
+  {
+    "name": "Corn Cheese Burger",
+    "halfPrice": 0,
+    "fullPrice": 80,
+    "available": true,
+    "category": "BURGERS"
+  },
+  {
+    "name": "Paneer Cheese Burger",
+    "halfPrice": 0,
+    "fullPrice": 80,
+    "available": true,
+    "category": "BURGERS"
+  },
+  {
+    "name": "Tandoori Paneer Burger",
+    "halfPrice": 0,
+    "fullPrice": 80,
+    "available": true,
+    "category": "BURGERS"
+  },
+  {
+    "name": "Schezwan Veg Burger",
+    "halfPrice": 0,
+    "fullPrice": 80,
+    "available": true,
+    "category": "BURGERS"
+  },
+  {
+    "name": "Double Cheese Burger",
+    "halfPrice": 0,
+    "fullPrice": 90,
+    "available": true,
+    "category": "BURGERS"
+  },
+  {
+    "name": "Vanilla Shake",
+    "halfPrice": 0,
+    "fullPrice": 70,
+    "available": true,
+    "category": "SHAKES"
+  },
+  {
+    "name": "Chocolate Shake",
+    "halfPrice": 0,
+    "fullPrice": 80,
+    "available": true,
+    "category": "SHAKES"
+  },
+  {
+    "name": "KitKat Shake",
+    "halfPrice": 0,
+    "fullPrice": 80,
+    "available": true,
+    "category": "SHAKES"
+  },
+  {
+    "name": "Oreo Shake",
+    "halfPrice": 0,
+    "fullPrice": 90,
+    "available": true,
+    "category": "SHAKES"
+  },
+  {
+    "name": "Nutella Shake",
+    "halfPrice": 0,
+    "fullPrice": 90,
+    "available": true,
+    "category": "SHAKES"
+  },
+  {
+    "name": "French Fries",
+    "halfPrice": 0,
+    "fullPrice": 80,
+    "available": true,
+    "category": "FRIES"
+  },
+  {
+    "name": "Peri Peri Fries",
+    "halfPrice": 0,
+    "fullPrice": 90,
+    "available": true,
+    "category": "FRIES"
+  },
+  {
+    "name": "Veg Momos (Steam)",
+    "halfPrice": 50,
+    "fullPrice": 80,
+    "available": true,
+    "category": "MOMOS"
+  },
+  {
+    "name": "Veg Momos (Fried)",
+    "halfPrice": 60,
+    "fullPrice": 100,
+    "available": true,
+    "category": "MOMOS"
+  },
+  {
+    "name": "Paneer Momos (Steam)",
+    "halfPrice": 0,
+    "fullPrice": 120,
+    "available": true,
+    "category": "MOMOS"
+  },
+  {
+    "name": "Paneer Momos (Fried)",
+    "halfPrice": 0,
+    "fullPrice": 110,
+    "available": true,
+    "category": "MOMOS"
+  },
+  {
+    "name": "Gravy Manchurian",
+    "halfPrice": 50,
+    "fullPrice": 90,
+    "available": true,
+    "category": "MANCHURIAN"
+  },
+  {
+    "name": "Dry Manchurian",
+    "halfPrice": 50,
+    "fullPrice": 80,
+    "available": true,
+    "category": "MANCHURIAN"
+  },
+  {
+    "name": "Chilli Paneer",
+    "halfPrice": 80,
+    "fullPrice": 140,
+    "available": true,
+    "category": "OTHERS"
+  },
+  {
+    "name": "Dry Paneer",
+    "halfPrice": 80,
+    "fullPrice": 140,
+    "available": true,
+    "category": "OTHERS"
+  },
+  {
+    "name": "Maggi",
+    "halfPrice": 0,
+    "fullPrice": 50,
+    "available": true,
+    "category": "OTHERS"
+  },
+  {
+    "name": "Cheese Maggi",
+    "halfPrice": 0,
+    "fullPrice": 70,
+    "available": true,
+    "category": "OTHERS"
+  },
+  {
+    "name": "Pasta",
+    "halfPrice": 0,
+    "fullPrice": 70,
+    "available": true,
+    "category": "OTHERS"
+  },
+  {
+    "name": "Butter Pasta",
+    "halfPrice": 0,
+    "fullPrice": 90,
+    "available": true,
+    "category": "OTHERS"
+  },
+  {
+    "name": "Paneer Pasta",
+    "halfPrice": 0,
+    "fullPrice": 100,
+    "available": true,
+    "category": "OTHERS"
+  },
+  {
+    "name": "Schezwan Pasta",
+    "halfPrice": 0,
+    "fullPrice": 100,
+    "available": true,
+    "category": "OTHERS"
+  },
+  {
+    "name": "Veg Biryani",
+    "halfPrice": 70,
+    "fullPrice": 120,
+    "available": true,
+    "category": "OTHERS"
+  },
+  {
+    "name": "Paneer Biryani",
+    "halfPrice": 80,
+    "fullPrice": 140,
+    "available": true,
+    "category": "OTHERS"
+  },
+  {
+    "name": "Veg Pulao",
+    "halfPrice": 60,
+    "fullPrice": 110,
+    "available": true,
+    "category": "OTHERS"
+  },
+  {
+    "name": "Paneer Pulao",
+    "halfPrice": 80,
+    "fullPrice": 140,
+    "available": true,
+    "category": "OTHERS"
+  }
 ]

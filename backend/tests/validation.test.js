@@ -18,8 +18,8 @@ test('validates and merges duplicate order items', () => {
     order_type: 'DINE_IN',
     table_number: '4',
     items: [
-      { item_name: 'Veg Momos', quantity: 3 },
-      { item_name: 'Cold Drink', quantity: 1 }
+      { item_name: 'Veg Momos', portion: 'Full', quantity: 3, unit_price: 0, total_price: 0, order_type: 'DINE_IN' },
+      { item_name: 'Cold Drink', portion: 'Full', quantity: 1, unit_price: 0, total_price: 0, order_type: 'DINE_IN' }
     ]
   });
 });

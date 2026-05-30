@@ -1,5 +1,4 @@
 const cards = [
-  ['Total Today', 'totalOrdersToday'],
   ['Pending', 'pendingOrders'],
   ['Cooking', 'cookingOrders'],
   ['Ready', 'readyOrders'],

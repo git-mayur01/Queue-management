@@ -14,6 +14,7 @@ export default function KitchenPage() {
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState('');
   const [busyOrderId, setBusyOrderId] = useState(null);
+  const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
     Promise.all([api.getActiveOrders(), api.getStats(), api.getAggregation()])
@@ -33,6 +34,19 @@ export default function KitchenPage() {
       setAggregation(snapshot.aggregation);
     });
 
+    socket.on('order:updated', (data) => {
+      const newNotif = {
+        id: Date.now() + Math.random(),
+        title: 'ORDER UPDATED',
+        subtitle: data.orderType === 'DINE_IN' ? `Table ${data.tableNumber}` : 'Parcel',
+        message: `New Item Added: ${data.newItem.quantity}x ${data.newItem.item_name} (${data.newItem.portion})`
+      };
+      setNotifications((prev) => [...prev, newNotif]);
+      setTimeout(() => {
+        setNotifications((prev) => prev.filter((n) => n.id !== newNotif.id));
+      }, 8000);
+    });
+
     return () => socket.disconnect();
   }, []);
 
@@ -45,6 +59,24 @@ export default function KitchenPage() {
       setError(err.message);
     } finally {
       setBusyOrderId(null);
+    }
+  }
+
+  async function handleItemStatusChange(orderId, itemId, status) {
+    setError('');
+    try {
+      await api.updateItemStatus(orderId, itemId, status);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleBulkComplete(itemName, portion) {
+    setError('');
+    try {
+      await api.bulkCompleteItem(itemName, portion);
+    } catch (err) {
+      setError(err.message);
     }
   }
 
@@ -66,18 +98,48 @@ export default function KitchenPage() {
         <section className="panel order-board">
           <div className="section-title-row">
             <h2>Active Orders</h2>
-            <p>Serve by token order: first created, first served.</p>
           </div>
           {orders.length === 0 ? (
             <p className="empty-state">No active orders. The board is clear.</p>
           ) : (
             <div className="orders-grid">
-              {orders.map((order) => (
-                <OrderCard key={order.id} order={order} onStatusChange={handleStatusChange} busy={busyOrderId === order.id} />
-              ))}
+              {orders
+                .slice()
+                .sort((a, b) => a.token_number - b.token_number)
+                .map((order) => (
+                  <OrderCard 
+                    key={order.id} 
+                    order={order} 
+                    onStatusChange={handleStatusChange} 
+                    busy={busyOrderId === order.id} 
+                    isKitchen={true} 
+                    onItemStatusChange={handleItemStatusChange}
+                  />
+                ))}
             </div>
           )}
         </section>
+      </div>
+      {/* Floating Notifications */}
+      <div className="kitchen-notifications-container">
+        {notifications.map((notif) => (
+          <div key={notif.id} className="kitchen-notification-card">
+            <header className="notification-header">
+              <span className="notification-badge-icon">🔔</span>
+              <strong>{notif.title}</strong>
+            </header>
+            <div className="notification-body">
+              <h3 className="notification-table">{notif.subtitle}</h3>
+              <p className="notification-message">{notif.message}</p>
+            </div>
+            <button
+              className="notification-close-btn"
+              onClick={() => setNotifications((prev) => prev.filter((n) => n.id !== notif.id))}
+            >
+              ×
+            </button>
+          </div>
+        ))}
       </div>
     </main>
   );
