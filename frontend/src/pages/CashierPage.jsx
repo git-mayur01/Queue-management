@@ -1,12 +1,28 @@
-import { useEffect, useMemo, useState } from 'react';
-import ConnectionBadge from '../components/ConnectionBadge.jsx';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import PageHeader from '../components/PageHeader.jsx';
 import ErrorMessage from '../components/ErrorMessage.jsx';
 import OrderCard from '../components/OrderCard.jsx';
 import OrderItems from '../components/OrderItems.jsx';
 import { api } from '../services/api.js';
 import { createSocket } from '../services/socket.js';
 
+function formatTime(value) {
+  if (!value) return '';
+  return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(new Date(`${value}Z`));
+}
+
 export default function CashierPage() {
+  const isMounted = useRef(true);
+  const activeTimers = useRef([]);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      activeTimers.current.forEach(clearTimeout);
+    };
+  }, []);
+
   const [menu, setMenu] = useState([]);
   const [orderType, setOrderType] = useState('DINE_IN');
   const [tableNumber, setTableNumber] = useState('');
@@ -30,25 +46,51 @@ export default function CashierPage() {
   const [selectedModalQuantity, setSelectedModalQuantity] = useState(1);
   const [selectedModalOrderType, setSelectedModalOrderType] = useState('DINE_IN');
   const [activeOrderRemoving, setActiveOrderRemoving] = useState(null);
-  const [selectedItemToRemove, setSelectedItemToRemove] = useState(null);
+  const [selectedItemsToRemove, setSelectedItemsToRemove] = useState(new Set());
   const [removeError, setRemoveError] = useState('');
+  const [showInlineTableInput, setShowInlineTableInput] = useState(false);
+  const [expandedOrderId, setExpandedOrderId] = useState(null);
+  const [selectedFilter, setSelectedFilter] = useState('ALL');
+
+  const toggleOrderExpand = (orderId) => {
+    setExpandedOrderId(prev => prev === orderId ? null : orderId);
+  };
 
   useEffect(() => {
     // Load initial menu
-    api.getMenu().then((data) => setMenu(data.items)).catch((err) => setError(err.message));
+    api.getMenu()
+      .then((data) => {
+        if (isMounted.current) setMenu(data.items);
+      })
+      .catch((err) => {
+        if (isMounted.current) setError(err.message);
+      });
+      
     // Load active orders
-    api.getActiveOrders().then((data) => setActiveOrders(data)).catch((err) => setError(err.message));
+    api.getActiveOrders()
+      .then((data) => {
+        if (isMounted.current) setActiveOrders(data);
+      })
+      .catch((err) => {
+        if (isMounted.current) setError(err.message);
+      });
 
     const socket = createSocket();
-    socket.on('connect', () => setConnected(true));
-    socket.on('disconnect', () => setConnected(false));
+    socket.on('connect', () => {
+      if (isMounted.current) setConnected(true);
+    });
+    socket.on('disconnect', () => {
+      if (isMounted.current) setConnected(false);
+    });
     socket.on('snapshot', (snapshot) => {
-      setReadyOrders(snapshot.readyOrders);
-      setActiveOrders(snapshot.activeOrders);
+      if (isMounted.current) {
+        setReadyOrders(snapshot.readyOrders);
+        setActiveOrders(snapshot.activeOrders);
+      }
     });
     // Dynamically sync menu changes in realtime
     socket.on('menu:updated', (newMenu) => {
-      setMenu(newMenu);
+      if (isMounted.current) setMenu(newMenu);
     });
 
     return () => socket.disconnect();
@@ -134,42 +176,51 @@ export default function CashierPage() {
 
   async function submitOrder(event) {
     event.preventDefault();
-    setError('');
+    if (isMounted.current) setError('');
 
     if (cart.length === 0) {
-      setError('Add at least one item before generating an order.');
+      if (isMounted.current) setError('Add at least one item before generating an order.');
       return;
     }
 
     if (orderType === 'DINE_IN') {
       const tableNum = parseInt(tableNumber, 10);
       if (!tableNumber.trim()) {
-        setError('Enter a table number for dine-in orders.');
-        return;
+        if (!showInlineTableInput) {
+          if (isMounted.current) setShowInlineTableInput(true);
+          return;
+        } else {
+          if (isMounted.current) setError('Enter a table number for dine-in orders.');
+          return;
+        }
       }
       if (isNaN(tableNum) || tableNum < 1 || tableNum > 15) {
-        setError('Table number must be between 1 and 15.');
+        if (isMounted.current) setError('Table number must be between 1 and 15.');
         return;
       }
     }
 
-    setSubmitting(true);
+    if (isMounted.current) setSubmitting(true);
     try {
       const order = await api.createOrder({
         order_type: orderType,
         table_number: tableNumber.trim(),
         items: cart
       });
-      setLastOrder(order);
-      setCart([]);
-      setTableNumber('');
-      setTimeout(() => {
-        setLastOrder(null);
-      }, 2000);
+      if (isMounted.current) {
+        setLastOrder(order);
+        setCart([]);
+        setTableNumber('');
+        setShowInlineTableInput(false);
+        const timer = setTimeout(() => {
+          if (isMounted.current) setLastOrder(null);
+        }, 2000);
+        activeTimers.current.push(timer);
+      }
     } catch (err) {
-      setError(err.message);
+      if (isMounted.current) setError(err.message);
     } finally {
-      setSubmitting(false);
+      if (isMounted.current) setSubmitting(false);
     }
   }
 
@@ -213,68 +264,77 @@ export default function CashierPage() {
       order_type: selectedModalOrderType
     };
 
+    const orderId = activeOrderEditing.id;
     try {
-      await api.addOrderItem(activeOrderEditing.id, itemPayload);
-      handleCloseAddItemModal();
+      await api.addOrderItem(orderId, itemPayload);
+      if (isMounted.current) {
+        handleCloseAddItemModal();
+        // Reopen the token card popup so user can continue managing the order
+        setExpandedOrderId(orderId);
+      }
     } catch (err) {
-      setError(err.message);
+      if (isMounted.current) setError(err.message);
     }
   }
 
   function handleOpenRemoveItemModal(order) {
     setActiveOrderRemoving(order);
-    setSelectedItemToRemove(null);
+    setSelectedItemsToRemove(new Set());
     setRemoveError('');
   }
 
   function handleCloseRemoveItemModal() {
     setActiveOrderRemoving(null);
-    setSelectedItemToRemove(null);
+    setSelectedItemsToRemove(new Set());
     setRemoveError('');
   }
 
   async function handleRemoveItemSubmit() {
-    if (!selectedItemToRemove) {
-      setRemoveError('Please select an item to remove.');
+    if (selectedItemsToRemove.size === 0) {
+      if (isMounted.current) setRemoveError('Please select at least one item to remove.');
       return;
     }
 
-    const item = activeOrderRemoving.items.find(i => i.id === selectedItemToRemove);
-    if (!item) return;
+    const selectedIds = [...selectedItemsToRemove];
+    const remainingCount = activeOrderRemoving.items.length - selectedIds.length;
 
-    if (item.status === 'COOKING' || item.status === 'READY' || item.status === 'SERVED') {
-      setRemoveError('This item is already being prepared and cannot be removed.');
-      return;
-    }
+    const confirmMsg = remainingCount === 0
+      ? `This will remove all ${selectedIds.length} item(s) and make the order empty. Continue?`
+      : `Remove ${selectedIds.length} selected item(s)?`;
 
-    if (activeOrderRemoving.items.length === 1) {
-      const confirmText = 'This will make the order empty. Continue?';
-      if (!window.confirm(confirmText)) {
-        return;
-      }
-    } else {
-      if (!window.confirm(`Are you sure you want to remove ${item.portion || 'Full'} ${item.item_name} from the order?`)) {
-        return;
-      }
-    }
+    if (!window.confirm(confirmMsg)) return;
 
     try {
-      await api.removeOrderItem(activeOrderRemoving.id, selectedItemToRemove);
-      handleCloseRemoveItemModal();
+      for (const itemId of selectedIds) {
+        await api.removeOrderItem(activeOrderRemoving.id, itemId);
+      }
+      const orderId = activeOrderRemoving.id;
+      if (isMounted.current) {
+        handleCloseRemoveItemModal();
+        setExpandedOrderId(orderId);
+      }
     } catch (err) {
-      setRemoveError(err.message);
+      if (isMounted.current) setRemoveError(err.message);
     }
   }
 
+  const counts = useMemo(() => {
+    return {
+      ALL: activeOrders.length,
+      PENDING: activeOrders.filter(o => o.status === 'PENDING').length,
+      COOKING: activeOrders.filter(o => o.status === 'COOKING').length,
+      READY: activeOrders.filter(o => o.status === 'READY').length
+    };
+  }, [activeOrders]);
+
+  const filteredActiveOrders = useMemo(() => {
+    if (selectedFilter === 'ALL') return activeOrders;
+    return activeOrders.filter(o => o.status === selectedFilter);
+  }, [activeOrders, selectedFilter]);
+
   return (
     <main className="page cashier-page">
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">Mobile terminal</p>
-          <h1>Cashier</h1>
-        </div>
-        <ConnectionBadge connected={connected} />
-      </div>
+      <PageHeader title="Cashier" connected={connected} />
 
       {readyOrders.length > 0 && (
         <section className="panel ready-alert">
@@ -291,7 +351,11 @@ export default function CashierPage() {
           <h2>1. Order type</h2>
           <div className="segmented-control">
             <button type="button" className={orderType === 'DINE_IN' ? 'active' : ''} onClick={() => setOrderType('DINE_IN')}>Dine In</button>
-            <button type="button" className={orderType === 'PARCEL' ? 'active' : ''} onClick={() => setOrderType('PARCEL')}>Parcel</button>
+            <button type="button" className={orderType === 'PARCEL' ? 'active' : ''} onClick={() => {
+              setOrderType('PARCEL');
+              setShowInlineTableInput(false);
+              setTableNumber('');
+            }}>Parcel</button>
           </div>
           {orderType === 'DINE_IN' && (
             <label className="field-label">
@@ -311,7 +375,7 @@ export default function CashierPage() {
         {/* Step 2: Add Items */}
         <section className="panel menu-panel">
           <h2>2. Add items</h2>
-          <div className="menu-grid">
+          <div className="menu-grid" style={{ maxHeight: '450px', overflowY: 'auto', padding: '0.5rem', border: '1px solid var(--line)', borderRadius: '1rem', background: '#ffffff' }}>
             {sortedMenu.map((item) => (
               <button
                 type="button"
@@ -357,6 +421,44 @@ export default function CashierPage() {
                 <span>Bill Amount: <strong>₹{billAmount}</strong></span>
               </div>
             </>
+          )}
+          {cart.length > 0 && orderType === 'DINE_IN' && showInlineTableInput && (
+            <div style={{
+              background: '#fff7ed',
+              border: '1.5px dashed var(--amber)',
+              borderRadius: '1rem',
+              padding: '1rem',
+              marginBottom: '1.25rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+              animation: 'fadeIn 0.2s ease-out',
+              boxShadow: '0 4px 12px rgba(234, 88, 12, 0.05)'
+            }}>
+              <label style={{ fontSize: '0.95rem', fontWeight: 900, color: 'var(--amber)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span>🪑</span> Enter Table Number:
+              </label>
+              <input
+                type="text"
+                pattern="[0-9]*"
+                inputMode="numeric"
+                placeholder="Table 1 to 15"
+                value={tableNumber}
+                onChange={handleTableNumberChange}
+                style={{
+                  width: '100%',
+                  padding: '0.7rem 0.9rem',
+                  borderRadius: '0.75rem',
+                  border: '1px solid var(--amber)',
+                  fontWeight: 900,
+                  background: '#ffffff',
+                  fontSize: '1.05rem',
+                  outline: 'none',
+                  boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)'
+                }}
+                autoFocus
+              />
+            </div>
           )}
           <ErrorMessage message={error} />
           <button className="primary-action" type="submit" disabled={submitting || cart.length === 0}>
@@ -428,22 +530,99 @@ export default function CashierPage() {
 
       {/* Active Orders Section */}
       <section className="panel cashier-active-orders-panel" style={{ marginTop: '2rem' }}>
-        <div className="section-title-row">
+        <div className="section-title-row" style={{ marginBottom: '1.25rem' }}>
           <h2>Active Orders</h2>
-          <p>Orders currently in progress. Tap "Add Item" to append new items.</p>
         </div>
+
         {activeOrders.length === 0 ? (
           <p className="empty-state">No active orders at the moment.</p>
         ) : (
-          <div className="orders-grid">
-            {activeOrders.map((order) => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                onAddItem={handleOpenAddItemModal}
-                onRemoveItem={handleOpenRemoveItemModal}
-              />
-            ))}
+          <div className="active-orders-list" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '550px', overflowY: 'auto', padding: '0.5rem', border: '1px solid var(--line)', borderRadius: '1.25rem', background: '#ffffff' }}>
+            {activeOrders.map((order) => {
+              const totalAmount = order.items ? order.items.reduce((sum, item) => sum + (item.total_price || 0), 0) : 0;
+              const itemCount = order.items ? order.items.reduce((sum, item) => sum + item.quantity, 0) : 0;
+
+              const statusColors = {
+                PENDING: { color: 'var(--amber)', border: 'var(--amber)', bg: '#fff7ed' },
+                COOKING: { color: 'var(--blue)', border: 'var(--blue)', bg: '#eff6ff' },
+                READY: { color: 'var(--green)', border: 'var(--green)', bg: '#ecfdf5' },
+                DELIVERED: { color: 'var(--muted)', border: 'var(--muted)', bg: '#f4f4f5' },
+                COMPLETED: { color: 'var(--muted)', border: 'var(--muted)', bg: '#f4f4f5' }
+              };
+              const theme = statusColors[order.status.toUpperCase()] || statusColors.PENDING;
+
+              return (
+                <div 
+                  key={order.id}
+                  style={{
+                    border: '1px solid var(--line)',
+                    borderLeft: `5px solid ${theme.border}`,
+                    borderRadius: '0.85rem',
+                    background: '#ffffff',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.03)',
+                    overflow: 'hidden',
+                    transition: 'all 0.2s ease-in-out'
+                  }}
+                >
+                  {/* Collapsed Header Bar / Tap Area */}
+                  <div 
+                    onClick={() => toggleOrderExpand(order.id)}
+                    style={{
+                      padding: '0.85rem 1.25rem',
+                      display: 'flex',
+                      flexDirection: 'row',
+                      flexWrap: 'nowrap',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      cursor: 'pointer',
+                      background: '#ffffff',
+                      userSelect: 'none',
+                      gap: '0.75rem',
+                      width: '100%',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    {/* Left Column: Token & Table */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexShrink: 0 }}>
+                      <span style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--ink)' }}>
+                        #{order.token_number}
+                      </span>
+                      <span style={{
+                        fontSize: '0.85rem',
+                        fontWeight: 800,
+                        color: 'var(--muted)',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        {order.order_type === 'DINE_IN' ? `Table ${order.table_number}` : 'Parcel'}
+                      </span>
+                    </div>
+
+                    {/* Middle Column: Items count */}
+                    <div style={{ display: 'flex', alignItems: 'center', flexGrow: 1, justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                        {itemCount} {itemCount === 1 ? 'Item' : 'Items'}
+                      </span>
+                    </div>
+
+                    {/* Right Column: Price & Arrow */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', flexShrink: 0 }}>
+                      <span style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--primary-dark)', whiteSpace: 'nowrap' }}>
+                        ₹{totalAmount}
+                      </span>
+                      <span style={{ 
+                        fontSize: '0.85rem', 
+                        fontWeight: '900', 
+                        color: 'var(--muted)', 
+                        display: 'inline-block',
+                        flexShrink: 0
+                      }}>
+                        ▼
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </section>
@@ -451,34 +630,33 @@ export default function CashierPage() {
       {/* Add Item to Existing Order Modal */}
       {activeOrderEditing && (
         <div className="modal-overlay" onClick={handleCloseAddItemModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <header className="modal-header">
-              <h2>Add Item to Order</h2>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px', padding: '1rem', gap: '0.75rem' }}>
+            <header className="modal-header" style={{ paddingBottom: '0.5rem' }}>
+              <h2 style={{ fontSize: '1rem', margin: 0 }}>Add Item — Token #{activeOrderEditing.token_number}</h2>
               <button type="button" className="btn-close-modal" onClick={handleCloseAddItemModal}>×</button>
             </header>
             
-            <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
-              <div style={{ marginBottom: '1.2rem', paddingBottom: '0.8rem', borderBottom: '1px solid var(--line)' }}>
-                <span className="eyebrow" style={{ display: 'block', marginBottom: '0.2rem' }}>Target Order</span>
-                <strong style={{ fontSize: '1.25rem', color: 'var(--ink)' }}>
-                  Token #{activeOrderEditing.token_number} — {activeOrderEditing.order_type === 'DINE_IN' ? `Table ${activeOrderEditing.table_number}` : 'Parcel'}
+            <div className="modal-body" style={{ maxHeight: '60vh', overflowY: 'auto', padding: '0.25rem 0' }}>
+              <div style={{ marginBottom: '0.85rem', paddingBottom: '0.5rem', borderBottom: '1px solid var(--line)' }}>
+                <strong style={{ fontSize: '1rem', color: 'var(--ink)' }}>
+                  {activeOrderEditing.order_type === 'DINE_IN' ? `Table ${activeOrderEditing.table_number}` : 'Parcel'}
                 </strong>
               </div>
 
               {/* Step A: Select Item */}
-              <div style={{ marginBottom: '1.2rem' }}>
-                <span className="selector-label" style={{ display: 'block', marginBottom: '0.5rem' }}>1. Select Item:</span>
-                <div className="menu-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', maxHeight: '180px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '0.8rem', padding: '0.5rem', background: '#fff' }}>
+              <div style={{ marginBottom: '0.85rem' }}>
+                <span className="selector-label" style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.8rem' }}>Select Item:</span>
+                <div className="menu-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(95px, 1fr))', maxHeight: '140px', overflowY: 'auto', border: '1px solid var(--line)', borderRadius: '0.8rem', padding: '0.4rem', background: '#fff' }}>
                   {sortedMenu.map((item) => (
                     <button
                       type="button"
                       key={item.name}
                       className={`menu-item-card ${item.available ? 'item-available' : 'item-unavailable'} ${selectedModalItem?.name === item.name ? 'selected-item' : ''}`}
-                      style={selectedModalItem?.name === item.name ? { borderColor: 'var(--primary)', background: '#fff5f5' } : {}}
+                      style={{ minHeight: '3.5rem !important', ...(selectedModalItem?.name === item.name ? { borderColor: 'var(--primary)', background: '#fff5f5' } : {}) }}
                       onClick={() => handleSelectModalItem(item)}
                       disabled={!item.available}
                     >
-                      <span className="item-title" style={{ fontSize: '0.85rem' }}>{item.name}</span>
+                      <span className="item-title" style={{ fontSize: '0.78rem' }}>{item.name}</span>
                     </button>
                   ))}
                 </div>
@@ -486,69 +664,41 @@ export default function CashierPage() {
 
               {/* Step B: Portion & Quantity Selectors */}
               {selectedModalItem && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', animation: 'fadeIn 0.2s ease-out' }}>
-                  <div className="portion-selector-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
-                    <span className="selector-label">Portion Type</span>
-                    <div style={{ display: 'flex', gap: '1.25rem' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem', animation: 'fadeIn 0.2s ease-out' }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
+                    <span className="selector-label" style={{ fontSize: '0.8rem', flexShrink: 0 }}>Portion:</span>
+                    <div style={{ display: 'flex', gap: '1rem' }}>
                       {selectedModalItem.halfPrice > 0 && (
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '800', cursor: 'pointer' }}>
-                          <input
-                            type="radio"
-                            name="modalPortion"
-                            value="Half"
-                            checked={selectedModalPortion === 'Half'}
-                            onChange={() => setSelectedModalPortion('Half')}
-                            style={{ width: 'auto', margin: 0 }}
-                          />
-                          Half Plate (₹{selectedModalItem.halfPrice})
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: '800', cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <input type="radio" name="modalPortion" value="Half" checked={selectedModalPortion === 'Half'} onChange={() => setSelectedModalPortion('Half')} style={{ width: 'auto', margin: 0 }} />
+                          Half (₹{selectedModalItem.halfPrice})
                         </label>
                       )}
                       {selectedModalItem.fullPrice > 0 && (
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '800', cursor: 'pointer' }}>
-                          <input
-                            type="radio"
-                            name="modalPortion"
-                            value="Full"
-                            checked={selectedModalPortion === 'Full'}
-                            onChange={() => setSelectedModalPortion('Full')}
-                            style={{ width: 'auto', margin: 0 }}
-                          />
-                          Full Plate (₹{selectedModalItem.fullPrice})
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: '800', cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <input type="radio" name="modalPortion" value="Full" checked={selectedModalPortion === 'Full'} onChange={() => setSelectedModalPortion('Full')} style={{ width: 'auto', margin: 0 }} />
+                          Full (₹{selectedModalItem.fullPrice})
                         </label>
                       )}
                     </div>
                   </div>
 
-                  <div className="order-type-selector-row" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
-                    <span className="selector-label">Order Type</span>
-                    <div style={{ display: 'flex', gap: '1.25rem' }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '800', cursor: 'pointer' }}>
-                        <input
-                          type="radio"
-                          name="modalOrderType"
-                          value="DINE_IN"
-                          checked={selectedModalOrderType === 'DINE_IN'}
-                          onChange={() => setSelectedModalOrderType('DINE_IN')}
-                          style={{ width: 'auto', margin: 0 }}
-                        />
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center' }}>
+                    <span className="selector-label" style={{ fontSize: '0.8rem', flexShrink: 0 }}>Type:</span>
+                    <div style={{ display: 'flex', gap: '1rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: '800', cursor: 'pointer', fontSize: '0.85rem' }}>
+                        <input type="radio" name="modalOrderType" value="DINE_IN" checked={selectedModalOrderType === 'DINE_IN'} onChange={() => setSelectedModalOrderType('DINE_IN')} style={{ width: 'auto', margin: 0 }} />
                         Dine In
                       </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: '800', cursor: 'pointer' }}>
-                        <input
-                          type="radio"
-                          name="modalOrderType"
-                          value="PARCEL"
-                          checked={selectedModalOrderType === 'PARCEL'}
-                          onChange={() => setSelectedModalOrderType('PARCEL')}
-                          style={{ width: 'auto', margin: 0 }}
-                        />
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontWeight: '800', cursor: 'pointer', fontSize: '0.85rem' }}>
+                        <input type="radio" name="modalOrderType" value="PARCEL" checked={selectedModalOrderType === 'PARCEL'} onChange={() => setSelectedModalOrderType('PARCEL')} style={{ width: 'auto', margin: 0 }} />
                         Parcel
                       </label>
                     </div>
                   </div>
 
-                  <div className="quantity-selector-row">
-                    <span className="selector-label">3. Quantity:</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span className="selector-label" style={{ fontSize: '0.8rem' }}>Qty:</span>
                     <div className="qty-controls modal-qty-controls">
                       <button type="button" disabled={selectedModalQuantity <= 1} onClick={() => setSelectedModalQuantity(q => q - 1)}>-</button>
                       <strong>{selectedModalQuantity}</strong>
@@ -556,8 +706,8 @@ export default function CashierPage() {
                     </div>
                   </div>
 
-                  <div className="modal-total-bar">
-                    <span>Item Total:</span>
+                  <div className="modal-total-bar" style={{ padding: '0.65rem 0.9rem', fontSize: '1rem' }}>
+                    <span>Total:</span>
                     <strong>₹{((selectedModalPortion === 'Half' ? selectedModalItem.halfPrice : selectedModalItem.fullPrice) * selectedModalQuantity)}</strong>
                   </div>
                 </div>
@@ -581,20 +731,23 @@ export default function CashierPage() {
       {/* Remove Item Modal */}
       {activeOrderRemoving && (
         <div className="modal-overlay" onClick={handleCloseRemoveItemModal}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
             <header className="modal-header">
-              <h2>Remove Item (Token #{activeOrderRemoving.token_number})</h2>
+              <h2 style={{ fontSize: '1.05rem', margin: 0 }}>Remove Items — Token #{activeOrderRemoving.token_number}</h2>
               <button type="button" className="btn-close-modal" onClick={handleCloseRemoveItemModal}>×</button>
             </header>
 
-            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', padding: '1rem 0' }}>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '0.75rem 0' }}>
               {removeError && <div className="error-message">{removeError}</div>}
               
-              <p style={{ margin: 0, fontWeight: 800, color: 'var(--muted)', fontSize: '0.95rem' }}>Select item to remove:</p>
+              <p style={{ margin: 0, fontWeight: 800, color: 'var(--muted)', fontSize: '0.85rem' }}>
+                Select items to remove ({selectedItemsToRemove.size} selected):
+              </p>
               
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '300px', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '320px', overflowY: 'auto' }}>
                 {activeOrderRemoving.items.map((item) => {
                   const isSelectable = !(item.status === 'COOKING' || item.status === 'READY' || item.status === 'SERVED');
+                  const isChecked = selectedItemsToRemove.has(item.id);
                   return (
                     <label 
                       key={item.id} 
@@ -602,33 +755,38 @@ export default function CashierPage() {
                         display: 'flex', 
                         alignItems: 'center', 
                         gap: '0.75rem', 
-                        padding: '0.75rem 1rem', 
+                        padding: '0.65rem 1rem', 
                         borderRadius: '0.8rem', 
-                        border: `1px solid ${selectedItemToRemove === item.id ? 'var(--primary)' : 'var(--line)'}`, 
-                        background: selectedItemToRemove === item.id ? '#fdf8f7' : isSelectable ? 'white' : '#f5f5f5', 
+                        border: `1.5px solid ${isChecked ? 'var(--primary)' : 'var(--line)'}`, 
+                        background: isChecked ? '#fdf8f7' : isSelectable ? 'white' : '#f5f5f5', 
                         cursor: isSelectable ? 'pointer' : 'not-allowed',
-                        opacity: isSelectable ? 1 : 0.6,
-                        fontWeight: '800'
+                        opacity: isSelectable ? 1 : 0.55,
+                        fontWeight: '800',
+                        transition: 'border-color 0.15s ease, background 0.15s ease'
                       }}
                     >
                       <input
-                        type="radio"
-                        name="itemToRemove"
+                        type="checkbox"
                         value={item.id}
                         disabled={!isSelectable}
-                        checked={selectedItemToRemove === item.id}
+                        checked={isChecked}
                         onChange={() => {
                           setRemoveError('');
-                          setSelectedItemToRemove(item.id);
+                          setSelectedItemsToRemove(prev => {
+                            const next = new Set(prev);
+                            if (next.has(item.id)) next.delete(item.id);
+                            else next.add(item.id);
+                            return next;
+                          });
                         }}
-                        style={{ width: 'auto', margin: 0 }}
+                        style={{ width: '1.1rem', height: '1.1rem', margin: 0, accentColor: 'var(--primary)', cursor: isSelectable ? 'pointer' : 'not-allowed', flexShrink: 0 }}
                       />
                       <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
-                        <span style={{ fontSize: '1rem', color: isSelectable ? 'var(--ink)' : 'var(--muted)' }}>
-                          {item.portion || 'Full'} {item.item_name} x{item.quantity}
+                        <span style={{ fontSize: '0.95rem', color: isSelectable ? 'var(--ink)' : 'var(--muted)' }}>
+                          {item.portion || 'Full'} {item.item_name} ×{item.quantity}
                         </span>
                         {!isSelectable && (
-                          <span style={{ fontSize: '0.75rem', color: 'var(--amber)', fontWeight: 900, textTransform: 'uppercase', marginTop: '0.15rem' }}>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--amber)', fontWeight: 900, textTransform: 'uppercase', marginTop: '0.1rem' }}>
                             {item.status === 'COOKING' ? '🍳 Being Prepared' : item.status === 'READY' ? '🟢 Ready' : '🍽 Served'}
                           </span>
                         )}
@@ -645,18 +803,19 @@ export default function CashierPage() {
                 type="button"
                 className="primary-action"
                 style={{
-                  background: 'var(--primary)',
+                  background: selectedItemsToRemove.size > 0 ? 'var(--primary)' : '#ccc',
                   color: 'white',
                   border: 0,
                   borderRadius: '0.8rem',
                   fontWeight: '900',
                   padding: '0.8rem 1.5rem',
-                  cursor: 'pointer',
+                  cursor: selectedItemsToRemove.size > 0 ? 'pointer' : 'not-allowed',
+                  marginTop: 0
                 }}
                 onClick={handleRemoveItemSubmit}
-                disabled={!selectedItemToRemove}
+                disabled={selectedItemsToRemove.size === 0}
               >
-                Remove
+                Remove {selectedItemsToRemove.size > 0 ? `(${selectedItemsToRemove.size})` : ''}
               </button>
             </footer>
           </div>
@@ -672,6 +831,62 @@ export default function CashierPage() {
           </div>
         </div>
       )}
+
+      {/* Popup Order Card Details Modal */}
+      {expandedOrderId && (() => {
+        const popupOrder = activeOrders.find(o => o.id === expandedOrderId);
+        if (!popupOrder) return null;
+        return (
+          <div className="modal-overlay" onClick={() => setExpandedOrderId(null)}>
+            <div 
+              className="modal-content" 
+              style={{ 
+                maxWidth: '440px', 
+                padding: '1.25rem', 
+                overflow: 'hidden', 
+                borderRadius: '1.5rem', 
+                background: 'var(--card)',
+                boxShadow: '0 24px 64px rgba(0, 0, 0, 0.25)',
+                border: '1px solid var(--line)'
+              }} 
+              onClick={(e) => e.stopPropagation()}
+            >
+              <header className="modal-header" style={{ borderBottom: '1px solid var(--line)', paddingBottom: '0.75rem', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 900, color: 'var(--muted)' }}>Order Details</h2>
+                <button 
+                  type="button" 
+                  className="btn-close-modal" 
+                  style={{ 
+                    background: 'transparent', 
+                    border: 0, 
+                    fontSize: '1.8rem', 
+                    lineHeight: 1, 
+                    cursor: 'pointer', 
+                    color: 'var(--muted)',
+                    padding: '0 0.5rem'
+                  }} 
+                  onClick={() => setExpandedOrderId(null)}
+                >
+                  ×
+                </button>
+              </header>
+              <div style={{ padding: '0.5rem 0 0 0' }}>
+                <OrderCard
+                  order={popupOrder}
+                  onAddItem={(ord) => {
+                    setExpandedOrderId(null);
+                    handleOpenAddItemModal(ord);
+                  }}
+                  onRemoveItem={(ord) => {
+                    setExpandedOrderId(null);
+                    handleOpenRemoveItemModal(ord);
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </main>
   );
 }

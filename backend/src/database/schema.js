@@ -1,8 +1,11 @@
+import { hashPassword } from '../utils/crypto.js';
+
 export function initializeSchema(db) {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
   // Check if we need to migrate the tables for SERVED and PARTIALLY_SERVED check constraints
+
   const ordersSql = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'orders'").get()?.sql || '';
   if (ordersSql && !ordersSql.includes('PARTIALLY_SERVED')) {
     db.pragma('foreign_keys = OFF');
@@ -71,10 +74,38 @@ export function initializeSchema(db) {
       FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL CHECK (role IN ('admin', 'cashier', 'kitchen', 'display')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_orders_status_created ON orders(status, created_at);
     CREATE INDEX IF NOT EXISTS idx_orders_token ON orders(token_number);
     CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
   `);
+
+  // Clear old seeded demo users to ensure they are deleted
+  db.exec("DELETE FROM users WHERE username IN ('admin', 'cashier', 'kitchen', 'display')");
+
+  const totalUsers = db.prepare("SELECT COUNT(*) AS count FROM users").get()?.count || 0;
+  if (totalUsers < 4) {
+    // Delete any other users to make sure we start fresh with exactly the required four accounts
+    db.exec("DELETE FROM users");
+
+    const insertUser = db.prepare(`
+      INSERT INTO users (name, username, password_hash, role)
+      VALUES (?, ?, ?, ?)
+    `);
+    insertUser.run('Admin', 'Mayur@NGPtaste', hashPassword('Mayur@8432029195'), 'admin');
+    insertUser.run('Cashier', 'cashier_user', hashPassword('cashier_pass'), 'cashier');
+    insertUser.run('Kitchen', 'kitchen_user', hashPassword('kitchen_pass'), 'kitchen');
+    insertUser.run('Display', 'display_user', hashPassword('display_pass'), 'display');
+  }
+
 
   // Migrate existing order_items table if new columns are missing
   const tableInfo = db.prepare("PRAGMA table_info(order_items)").all();

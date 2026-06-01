@@ -4,6 +4,17 @@ import { api } from '../services/api.js';
 import { createSocket } from '../services/socket.js';
 
 export default function DisplayPage() {
+  const isMounted = useRef(true);
+  const activeTimeouts = useRef(new Set());
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      activeTimeouts.current.forEach(clearTimeout);
+    };
+  }, []);
+
   const [activeOrders, setActiveOrders] = useState([]);
   const [recentlyReady, setRecentlyReady] = useState([]);
   const [connected, setConnected] = useState(false);
@@ -99,36 +110,48 @@ export default function DisplayPage() {
   // Pre-chime followed by verbal announcement
   const playAnnouncement = (order) => {
     playChime();
-    setTimeout(() => {
-      speakAnnouncement(order);
+    const timer = setTimeout(() => {
+      if (isMounted.current) {
+        speakAnnouncement(order);
+      }
+      activeTimeouts.current.delete(timer);
     }, 850);
+    activeTimeouts.current.add(timer);
   };
 
   useEffect(() => {
     // Clock effect
-    const clockTimer = setInterval(() => setTime(new Date()), 1000);
+    const clockTimer = setInterval(() => {
+      if (isMounted.current) setTime(new Date());
+    }, 1000);
 
     // Fetch active orders initially
     api.getActiveOrders()
       .then((orders) => {
-        const sortedActive = [...orders].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-        setActiveOrders(sortedActive);
+        if (isMounted.current) {
+          const sortedActive = [...orders].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+          setActiveOrders(sortedActive);
 
-        const ready = orders.filter(o => o.status === 'READY' || o.status === 'COMPLETED');
-        ready.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-        setRecentlyReady(ready.slice(0, 5));
+          const ready = orders.filter(o => o.status === 'READY' || o.status === 'COMPLETED');
+          ready.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+          setRecentlyReady(ready.slice(0, 5));
 
-        // Mark initial ready orders as played so we don't announce them immediately
-        ready.forEach(o => playedTokens.current.add(o.token_number));
-        hasLoaded.current = true;
+          // Mark initial ready orders as played so we don't announce them immediately
+          ready.forEach(o => playedTokens.current.add(o.token_number));
+          hasLoaded.current = true;
+        }
       })
       .catch(() => {});
 
     const socket = createSocket();
-    socket.on('connect', () => setConnected(true));
-    socket.on('disconnect', () => setConnected(false));
+    socket.on('connect', () => {
+      if (isMounted.current) setConnected(true);
+    });
+    socket.on('disconnect', () => {
+      if (isMounted.current) setConnected(false);
+    });
     socket.on('snapshot', (snapshot) => {
-      if (snapshot && snapshot.activeOrders) {
+      if (snapshot && snapshot.activeOrders && isMounted.current) {
         const sortedActive = [...snapshot.activeOrders].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
         setActiveOrders(sortedActive);
 
@@ -138,8 +161,10 @@ export default function DisplayPage() {
         activeReady.forEach(o => {
           if (!playedTokens.current.has(o.token_number)) {
             playedTokens.current.add(o.token_number);
-            if (hasLoaded.current && audioEnabled) {
-              playAnnouncement(o);
+            if (hasLoaded.current) {
+              if (audioEnabled) {
+                playAnnouncement(o);
+              }
             }
           }
         });
@@ -206,14 +231,16 @@ export default function DisplayPage() {
     playChime();
     setAudioEnabled(!audioEnabled);
     if (!audioEnabled) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         try {
           if ('speechSynthesis' in window) {
             const utterance = new SpeechSynthesisUtterance("Audio announcements activated");
             window.speechSynthesis.speak(utterance);
           }
         } catch (e) {}
+        activeTimeouts.current.delete(timer);
       }, 800);
+      activeTimeouts.current.add(timer);
     }
   };
 

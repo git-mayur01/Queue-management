@@ -1,15 +1,28 @@
-import { useEffect, useState, useRef, useMemo } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
-import ConnectionBadge from '../components/ConnectionBadge.jsx';
+import PageHeader from '../components/PageHeader.jsx';
+import ErrorMessage from '../components/ErrorMessage.jsx';
 import { api } from '../services/api.js';
 import { createSocket } from '../services/socket.js';
 
 export default function AdminPage() {
+  const isMounted = useRef(true);
+  const activeTimers = useRef([]);
+
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      activeTimers.current.forEach(clearTimeout);
+    };
+  }, []);
+
   const [orders, setOrders] = useState([]);
   const [connected, setConnected] = useState(false);
   const [expandedOrder, setExpandedOrder] = useState(null);
   const [toast, setToast] = useState(null);
   const [backupState, setBackupState] = useState(null); // null | 'compressing' | 'handshake' | 'uploading' | 'success'
+
 
   const orderFeedRef = useRef(null);
 
@@ -27,36 +40,41 @@ export default function AdminPage() {
   const [historySearchFrom, setHistorySearchFrom] = useState('');
   const [historySearchTo, setHistorySearchTo] = useState('');
 
-  // System Tools / Factory Reset states
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [resetting, setResetting] = useState(false);
-
   // Toast helper
   const showToast = (message) => {
+    if (!isMounted.current) return;
     setToast(message);
-    setTimeout(() => setToast(null), 3000);
+    const timer = setTimeout(() => {
+      if (isMounted.current) setToast(null);
+    }, 3000);
+    activeTimers.current.push(timer);
   };
 
   const fetchOrders = () => {
     api.getOrders()
       .then((data) => {
-        setOrders(data);
+        if (isMounted.current) setOrders(data);
       })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   useEffect(() => {
     fetchOrders();
 
     const socket = createSocket();
-    socket.on('connect', () => setConnected(true));
-    socket.on('disconnect', () => setConnected(false));
+    socket.on('connect', () => {
+      if (isMounted.current) setConnected(true);
+    });
+    socket.on('disconnect', () => {
+      if (isMounted.current) setConnected(false);
+    });
     socket.on('snapshot', () => {
       fetchOrders();
     });
 
     return () => socket.disconnect();
   }, []);
+
 
   // SQL Datetime parsing helper
   const parseSQLDate = (dateStr) => {
@@ -191,6 +209,7 @@ export default function AdminPage() {
       ordersCount: filteredOrders.length,
       activeOrders,
       pendingOrders,
+      cookingOrders,
       readyOrders,
       deliveredOrders,
       aov,
@@ -384,7 +403,7 @@ export default function AdminPage() {
       return idx === 0 ? `M ${p.x} ${p.y}` : `${acc} L ${p.x} ${p.y}`;
     }, '');
 
-    const areaPath = points.length > 0 
+    const areaPath = points.length > 0
       ? `${linePath} L ${points[points.length - 1].x} ${height - padding} L ${points[0].x} ${height - padding} Z`
       : '';
 
@@ -446,8 +465,8 @@ export default function AdminPage() {
       }
 
       const orderType = order.order_type === 'DINE_IN' ? 'Table ' + order.table_number : 'Parcel';
-      const timeStr = order.updated_at 
-        ? parseSQLDate(order.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+      const timeStr = order.updated_at
+        ? parseSQLDate(order.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         : 'Recently';
 
       return {
@@ -470,27 +489,41 @@ export default function AdminPage() {
 
   // Cloud Database Handshake simulator
   const handleCloudBackup = () => {
+    if (!isMounted.current) return;
     setBackupState('compressing');
-    setTimeout(() => {
+    
+    const t1 = setTimeout(() => {
+      if (!isMounted.current) return;
       setBackupState('handshake');
-      setTimeout(() => {
+      
+      const t2 = setTimeout(() => {
+        if (!isMounted.current) return;
         setBackupState('uploading');
-        setTimeout(() => {
+        
+        const t3 = setTimeout(() => {
+          if (!isMounted.current) return;
           setBackupState('success');
-          setTimeout(() => {
+          
+          const t4 = setTimeout(() => {
+            if (!isMounted.current) return;
             setBackupState(null);
             showToast('💾 Database backup successfully synced to Google Cloud Storage!');
           }, 1000);
+          activeTimers.current.push(t4);
         }, 1000);
+        activeTimers.current.push(t3);
       }, 1000);
+      activeTimers.current.push(t2);
     }, 800);
+    activeTimers.current.push(t1);
   };
 
   const handleExportPDF = () => {
     showToast('📊 Formatting sales report for PDF Export...');
-    setTimeout(() => {
+    const t = setTimeout(() => {
       window.print();
     }, 500);
+    activeTimers.current.push(t);
   };
 
   // CSV Report Exporter helper
@@ -532,33 +565,14 @@ export default function AdminPage() {
     showToast('📊 CSV report downloaded successfully!');
   };
 
-  // Destructive Factory Reset handler
-  const handleFactoryReset = async () => {
-    setResetting(true);
-    try {
-      const res = await api.factoryReset();
-      if (res && res.success) {
-        setOrders([]);
-        setAppliedFilter({ type: 'Today', from: '', to: '' });
-        setGlobalFilter('Today');
-        setShowResetConfirm(false);
-        fetchOrders(); // Force dashboard widgets reload from backend
-        showToast('✨ Factory Reset Completed Successfully. The system is now in a fresh installation state.');
-      } else {
-        showToast('❌ Failed to complete factory reset.');
-      }
-    } catch (err) {
-      showToast(`❌ Error: ${err.message}`);
-    } finally {
-      setResetting(false);
-    }
-  };
 
   const handleOrderFeedClick = () => {
-    setTimeout(() => {
+    const t = setTimeout(() => {
       orderFeedRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
+    activeTimers.current.push(t);
   };
+
 
   return (
     <main className="page admin-pos-dashboard">
@@ -587,217 +601,150 @@ export default function AdminPage() {
       )}
 
       {/* Header */}
-      <header className="page-header admin-pos-header">
-        <div>
-          <p className="eyebrow" style={{ color: 'var(--blue)', fontSize: '0.85rem' }}>Management & Insights</p>
-          <h1 style={{ fontWeight: 900, fontSize: '2.4rem', margin: 0 }}>Owner Dashboard</h1>
-        </div>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-          <ConnectionBadge connected={connected} />
-        </div>
-      </header>
+      {/* Header */}
+      <PageHeader title="Admin Dashboard" connected={connected} />
 
       {/* GLOBAL DATE FILTER PANEL */}
-      <section className="panel date-filter-panel" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-          <div>
-            <h2 style={{ margin: 0 }}>📅 Reporting Date Filters</h2>
-            <p className="kpi-subtext" style={{ margin: '0.25rem 0 0 0', color: 'var(--muted)' }}>Select global timeframe to update POS statistics & analytics</p>
-          </div>
-          
-          <div className="pos-segmented-tabs" style={{ background: '#f2e5d5', borderRadius: '0.75rem', display: 'flex', padding: '0.2rem' }}>
-            {['Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days', 'This Month', 'Custom Date Range'].map(tab => (
-              <button 
-                key={tab} 
-                type="button" 
-                className={`tab-btn ${globalFilter === tab ? 'active' : ''}`}
-                onClick={() => {
-                  setGlobalFilter(tab);
-                  if (tab !== 'Custom Date Range') {
-                    setAppliedFilter({ type: tab, from: '', to: '' });
-                  }
-                }}
-                style={{
-                  background: globalFilter === tab ? 'var(--ink)' : 'transparent',
-                  color: globalFilter === tab ? 'white' : 'var(--muted)',
-                  border: 0,
-                  borderRadius: '0.6rem',
-                  fontWeight: 800,
-                  fontSize: '0.8rem',
-                  padding: '0.4rem 0.85rem',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
+      <section style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', background: '#e4e4e7', padding: '0.85rem 1.5rem', borderRadius: '1.25rem', border: '1px solid var(--line)', marginBottom: '1.5rem' }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 900, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span>📅</span> Reporting Interval Filter
+          </h3>
+          <p style={{ margin: '0.15rem 0 0 0', color: 'var(--muted)', fontSize: '0.8rem', fontWeight: 700 }}>
+            Updating POS analytics based on selected timeframe
+          </p>
         </div>
 
-        {globalFilter === 'Custom Date Range' && (
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap', background: '#faf9f6', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--line)', animation: 'fadeIn 0.2s ease-out' }}>
-            <div>
-              <label style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--muted)', display: 'block', marginBottom: '0.35rem' }}>From Date</label>
-              <input 
-                type="date" 
-                value={globalFrom} 
-                onChange={e => setGlobalFrom(e.target.value)} 
-                style={{ padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid var(--line)', fontWeight: 700 }}
-              />
-            </div>
-            <div>
-              <label style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--muted)', display: 'block', marginBottom: '0.35rem' }}>To Date</label>
-              <input 
-                type="date" 
-                value={globalTo} 
-                onChange={e => setGlobalTo(e.target.value)} 
-                style={{ padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid var(--line)', fontWeight: 700 }}
-              />
-            </div>
-            <button 
-              type="button"
-              className="primary-action"
-              onClick={() => setAppliedFilter({ type: 'Custom', from: globalFrom, to: globalTo })}
-              style={{ padding: '0.6rem 1.5rem', marginTop: 0, width: 'auto' }}
-            >
-              Apply Filter
-            </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          <div className="pos-segmented-tabs" style={{ background: 'transparent', borderRadius: 0, padding: 0, gap: '0.5rem' }}>
+            {['Today', 'Yesterday', 'Custom Date Range'].map(tab => {
+              const isActive = globalFilter === tab;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => {
+                    setGlobalFilter(tab);
+                    if (tab !== 'Custom Date Range') {
+                      setAppliedFilter({ type: tab, from: '', to: '' });
+                    }
+                  }}
+                  style={{
+                    background: isActive ? '#ffffff' : 'transparent',
+                    color: isActive ? 'var(--ink)' : 'var(--muted)',
+                    border: 'none',
+                    borderRadius: isActive ? '0.75rem' : '0.5rem',
+                    fontWeight: 800,
+                    fontSize: '0.85rem',
+                    padding: '0.5rem 1.1rem',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease',
+                    boxShadow: isActive ? '0 4px 12px rgba(24, 24, 27, 0.06)' : 'none'
+                  }}
+                >
+                  {tab}
+                </button>
+              );
+            })}
           </div>
-        )}
+        </div>
       </section>
 
-      {/* COMPARISON AND REVENUE SUMMARY OVERVIEW */}
-      <div className="pos-two-column-layout" style={{ gap: '1.5rem' }}>
-        
-        {/* Comparison Analytics Card */}
-        <section className="panel comparison-analytics-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <h2>📈 Comparison Analytics</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', flex: 1, justifyContent: 'center' }}>
+      {/* Date fields if custom is selected */}
+      {globalFilter === 'Custom Date Range' && (
+        <section style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap', background: '#ffffff', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--line)', marginBottom: '1.5rem', animation: 'fadeIn 0.2s ease-out' }}>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--muted)', display: 'block', marginBottom: '0.35rem' }}>From Date</label>
+            <input
+              type="date"
+              value={globalFrom}
+              onChange={e => setGlobalFrom(e.target.value)}
+              style={{ padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid var(--line)', fontWeight: 700 }}
+            />
+          </div>
+          <div>
+            <label style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--muted)', display: 'block', marginBottom: '0.35rem' }}>To Date</label>
+            <input
+              type="date"
+              value={globalTo}
+              onChange={e => setGlobalTo(e.target.value)}
+              style={{ padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid var(--line)', fontWeight: 700 }}
+            />
+          </div>
+          <button
+            type="button"
+            className="primary-action"
+            onClick={() => setAppliedFilter({ type: 'Custom', from: globalFrom, to: globalTo })}
+            style={{ padding: '0.6rem 1.5rem', marginTop: 0, width: 'auto' }}
+          >
+            Apply Filter
+          </button>
+        </section>
+      )}
+
+      {/* TWO COLUMN ROW: GROSS REVENUE & SPLINE CURVE */}
+      <div className="pos-two-column-layout" style={{ gap: '1.5rem', marginBottom: '1.5rem' }}>
+
+        {/* Gross Revenue Black Card */}
+        <section className="panel" style={{ background: '#111111', border: '1px solid #222222', borderRadius: '1.5rem', padding: '2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', color: '#ffffff', minHeight: '260px' }}>
+          <div>
+            <span style={{ fontSize: '0.8rem', color: '#888888', fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              GROSS REVENUE ({appliedFilter.type.toUpperCase()})
+            </span>
+            <strong style={{ display: 'block', fontSize: '3.8rem', fontWeight: 900, color: '#ffffff', margin: '0.75rem 0' }}>
+              {formatPrice(derivedStats.revenue)}
+            </strong>
+
             {(() => {
               const comp = getComparisonMetrics(orders);
+              const isGrowth = comp.todayVsYesterdayGrowth >= 0;
               return (
-                <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#faf9f6', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--line)' }}>
-                    <div>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 800, display: 'block' }}>TODAY vs YESTERDAY</span>
-                      <strong style={{ fontSize: '1.4rem', color: 'var(--ink)' }}>{formatPrice(comp.todayRevenue)} <span style={{ fontSize: '0.85rem', color: 'var(--muted)', fontWeight: 700 }}>vs {formatPrice(comp.yesterdayRevenue)}</span></strong>
-                    </div>
-                    <span className="status-pill" style={{
-                      background: comp.todayVsYesterdayGrowth >= 0 ? '#e7f7ed' : '#fff0f0',
-                      color: comp.todayVsYesterdayGrowth >= 0 ? 'var(--green)' : 'var(--primary)',
-                      fontWeight: 900
-                    }}>
-                      {comp.todayVsYesterdayGrowth >= 0 ? `+${comp.todayVsYesterdayGrowth}%` : `${comp.todayVsYesterdayGrowth}%`}
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#faf9f6', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--line)' }}>
-                    <div>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 800, display: 'block' }}>THIS MONTH vs LAST MONTH</span>
-                      <strong style={{ fontSize: '1.4rem', color: 'var(--ink)' }}>{formatPrice(comp.thisMonthRevenue)} <span style={{ fontSize: '0.85rem', color: 'var(--muted)', fontWeight: 700 }}>vs {formatPrice(comp.lastMonthRevenue)}</span></strong>
-                    </div>
-                    <span className="status-pill" style={{
-                      background: comp.thisMonthVsLastMonthGrowth >= 0 ? '#e7f7ed' : '#fff0f0',
-                      color: comp.thisMonthVsLastMonthGrowth >= 0 ? 'var(--green)' : 'var(--primary)',
-                      fontWeight: 900
-                    }}>
-                      {comp.thisMonthVsLastMonthGrowth >= 0 ? `+${comp.thisMonthVsLastMonthGrowth}%` : `${comp.thisMonthVsLastMonthGrowth}%`}
-                    </span>
-                  </div>
-                </>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', background: isGrowth ? 'rgba(19, 138, 69, 0.15)' : 'rgba(192, 57, 43, 0.15)', color: isGrowth ? '#2ecc71' : '#ff7675', padding: '0.4rem 0.85rem', borderRadius: '999px', fontSize: '0.85rem', fontWeight: 900 }}>
+                  <span>{isGrowth ? '▲' : '▼'}</span>
+                  <span>{Math.abs(comp.todayVsYesterdayGrowth)}% vs Yesterday ({formatPrice(comp.yesterdayRevenue)})</span>
+                </div>
               );
             })()}
           </div>
+
+          <p style={{ margin: '1.5rem 0 0 0', color: '#666666', fontSize: '0.78rem', fontWeight: 700 }}>
+            Volume tracks items, modifiers, taxes, and service availability.
+          </p>
         </section>
 
-        {/* Revenue Summary Cards */}
-        <section className="panel revenue-summary-card">
-          <h2>📊 Filtered Revenue Summary</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
-            <div style={{ background: '#e8f4ec', border: '1px solid #c8e6d1', padding: '1rem', borderRadius: '1rem' }}>
-              <span style={{ fontSize: '0.78rem', color: 'var(--muted)', fontWeight: 800 }}>Total Revenue</span>
-              <strong style={{ display: 'block', fontSize: '1.6rem', color: 'var(--green)', margin: '0.25rem 0' }}>{formatPrice(derivedStats.revenue)}</strong>
-            </div>
-            
-            <div style={{ background: '#e5f1fc', border: '1px solid #cce3f9', padding: '1rem', borderRadius: '1rem' }}>
-              <span style={{ fontSize: '0.78rem', color: 'var(--muted)', fontWeight: 800 }}>Total Orders</span>
-              <strong style={{ display: 'block', fontSize: '1.6rem', color: 'var(--blue)', margin: '0.25rem 0' }}>{derivedStats.ordersCount}</strong>
-            </div>
-
-            <div style={{ background: '#fdf3e7', border: '1px solid #f9dfc1', padding: '1rem', borderRadius: '1rem' }}>
-              <span style={{ fontSize: '0.78rem', color: 'var(--muted)', fontWeight: 800 }}>Avg. Order Value</span>
-              <strong style={{ display: 'block', fontSize: '1.6rem', color: 'var(--amber)', margin: '0.25rem 0' }}>{formatPrice(derivedStats.aov)}</strong>
-            </div>
-
-            <div style={{ background: '#faf9f6', border: '1px solid var(--line)', padding: '1rem', borderRadius: '1rem' }}>
-              <span style={{ fontSize: '0.78rem', color: 'var(--muted)', fontWeight: 800 }}>Best Selling Item</span>
-              <strong style={{ display: 'block', fontSize: '1.15rem', color: 'var(--ink)', margin: '0.5rem 0 0.25rem 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {derivedStats.mostSoldItem === 'N/A' ? '' : derivedStats.mostSoldItem}
-              </strong>
-              <span style={{ fontSize: '0.7rem', color: 'var(--muted)', fontWeight: 800 }}>
-                {derivedStats.mostSoldItem === 'N/A' ? '0 portions sold' : `${derivedStats.mostSoldQty} portions sold`}
-              </span>
-            </div>
+        {/* Revenue Velocity Curve Card */}
+        <section className="panel" style={{ background: '#ffffff', border: '1px solid var(--line)', borderRadius: '1.5rem', padding: '1.5rem 2rem', display: 'flex', flexDirection: 'column', minHeight: '260px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: 'none', paddingBottom: 0, marginBottom: '0.5rem' }}>
+            <h2 style={{ margin: 0, fontSize: '0.85rem', color: 'var(--muted)', fontWeight: 900, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              REVENUE VELOCITY CURVE
+            </h2>
+            <span style={{ fontSize: '0.78rem', color: 'var(--muted)', fontWeight: 800 }}>
+              Real-time sales spline chart
+            </span>
           </div>
-        </section>
-      </div>
 
-      {/* SECTION 1 — REAL-TIME KITCHEN QUEUE KPI */}
-      <section className="admin-pos-kpi-grid" aria-label="KPI Metrics">
-        <div className="pos-kpi-card revenue" style={{ borderLeft: '6px solid var(--green)' }}>
-          <span className="kpi-label">Active Orders</span>
-          <strong className="kpi-value text-green">{derivedStats.activeOrders}</strong>
-          <span className="kpi-subtext">Preparing & collection</span>
-        </div>
-        <div className="pos-kpi-card orders" style={{ borderLeft: '6px solid var(--blue)' }}>
-          <span className="kpi-label">Pending Orders</span>
-          <strong className="kpi-value text-blue">{derivedStats.pendingOrders}</strong>
-          <span className="kpi-subtext">Queued in kitchen</span>
-        </div>
-        <div className="pos-kpi-card active" style={{ borderLeft: '6px solid var(--amber)' }}>
-          <span className="kpi-label">Ready Orders</span>
-          <strong className="kpi-value text-yellow">{derivedStats.readyOrders}</strong>
-          <span className="kpi-subtext">Waiting for pickup</span>
-        </div>
-        <div className="pos-kpi-card pending" style={{ borderLeft: '6px solid var(--amber)' }}>
-          <span className="kpi-label">Delivered Orders</span>
-          <strong className="kpi-value text-yellow">{derivedStats.deliveredOrders}</strong>
-          <span className="kpi-subtext">Closed order count</span>
-        </div>
-        <div className="pos-kpi-card ready" style={{ borderLeft: '6px solid var(--green)' }}>
-          <span className="kpi-label">Live Connection</span>
-          <strong className="kpi-value text-green">{connected ? 'ONLINE' : 'OFFLINE'}</strong>
-          <span className="kpi-subtext">Kitchen sync connected</span>
-        </div>
-      </section>
-
-      {/* SECOND ROW - SALES TREND AND ORDER BREAKDOWN */}
-      <div className="pos-two-column-layout">
-        {/* SECTION 2 — SALES ANALYTICS */}
-        <section className="panel sales-analytics-card">
-          <div className="panel-header-with-tabs">
-            <h2>Revenue Analytics Trend ({appliedFilter.type})</h2>
-          </div>
-          
-          <div className="svg-chart-container" style={{ position: 'relative', marginTop: '1.5rem', background: '#faf9f6', padding: '1rem', borderRadius: '1rem', border: '1px solid var(--line)' }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', width: '100%' }}>
             {filteredOrders.length === 0 ? (
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '180px', color: 'var(--muted)', fontWeight: 800 }}>
-                No sales data recorded
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '140px', gap: '0.85rem' }}>
+                <div style={{ background: '#eef3fc', width: '3.5rem', height: '3.5rem', borderRadius: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.75rem', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>📈</div>
+                <div style={{ textAlign: 'center' }}>
+                  <strong style={{ display: 'block', fontSize: '0.98rem', color: 'var(--ink)', fontWeight: 800 }}>No trend data available</strong>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 700 }}>Volume chart needs active transaction records</span>
+                </div>
               </div>
             ) : (
-              <>
-                <svg viewBox="0 0 600 180" style={{ width: '100%', height: 'auto', display: 'block' }}>
+              <div className="svg-chart-container" style={{ position: 'relative', width: '100%' }}>
+                <svg viewBox="0 0 600 140" style={{ width: '100%', height: 'auto', display: 'block' }}>
                   <defs>
                     <linearGradient id="chartAreaGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#138a45" stopOpacity="0.25" />
-                      <stop offset="100%" stopColor="#138a45" stopOpacity="0" />
+                      <stop offset="0%" stopColor="#1769aa" stopOpacity="0.25" />
+                      <stop offset="100%" stopColor="#1769aa" stopOpacity="0" />
                     </linearGradient>
                   </defs>
-                  <path d={areaPath} fill="url(#chartAreaGrad)" />
-                  <path d={linePath} fill="none" stroke="#138a45" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d={areaPath.replace(/180/g, '140')} fill="url(#chartAreaGrad)" />
+                  <path d={linePath.replace(/180/g, '140')} fill="none" stroke="#1769aa" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', color: 'var(--muted)', fontSize: '0.8rem', fontWeight: 800 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.5rem', color: 'var(--muted)', fontSize: '0.78rem', fontWeight: 800 }}>
                   {appliedFilter.type === 'Today' || appliedFilter.type === 'Yesterday' ? (
                     <>
                       <span>10 AM</span>
@@ -807,46 +754,81 @@ export default function AdminPage() {
                     </>
                   ) : (
                     <>
-                      <span>Start of Period</span>
+                      <span>Start</span>
                       <span>Mid Period</span>
-                      <span>End of Period</span>
+                      <span>End</span>
                     </>
                   )}
                 </div>
-              </>
+              </div>
             )}
           </div>
         </section>
-
-        {/* SECTION 4 — ORDER BREAKDOWN */}
-        <section className="panel order-breakdown-card">
-          <h2>Order Distribution Breakdown</h2>
-          {filteredOrders.length === 0 ? (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '180px', color: 'var(--muted)', fontWeight: 800 }}>
-              No order data recorded
-            </div>
-          ) : (
-            <div className="breakdown-content-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', height: '100%', justifyContent: 'center' }}>
-              <div className="percentage-visualizer-row" style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                <div className="metric-distribution dinein" style={{ flex: 1, textAlign: 'center', background: '#e8f4ec', border: '1px solid #c8e6d1', padding: '1rem', borderRadius: '1rem' }}>
-                  <span style={{ fontSize: '0.9rem', color: 'var(--muted)', fontWeight: 800 }}>🍽 Dine In Orders</span>
-                  <strong style={{ display: 'block', fontSize: '2rem', color: 'var(--green)', margin: '0.25rem 0' }}>{dineInPct}%</strong>
-                </div>
-                <div className="metric-distribution parcel" style={{ flex: 1, textAlign: 'center', background: '#fdf3e7', border: '1px solid #f9dfc1', padding: '1rem', borderRadius: '1rem' }}>
-                  <span style={{ fontSize: '0.9rem', color: 'var(--muted)', fontWeight: 800 }}>🛍 Parcel Orders</span>
-                  <strong style={{ display: 'block', fontSize: '2rem', color: 'var(--amber)', margin: '0.25rem 0' }}>{parcelPct}%</strong>
-                </div>
-              </div>
-              
-              {/* Visual ratio track bar */}
-              <div className="pos-ratio-track" style={{ background: '#f0ebd8', height: '20px', borderRadius: '999px', overflow: 'hidden', display: 'flex' }}>
-                <div style={{ width: `${dineInPct}%`, background: 'var(--green)', height: '100%' }}></div>
-                <div style={{ width: `${parcelPct}%`, background: 'var(--amber)', height: '100%' }}></div>
-              </div>
-            </div>
-          )}
-        </section>
       </div>
+
+      {/* FOUR KPI METRICS GRID */}
+      <section className="admin-pos-kpi-grid" aria-label="KPI Metrics" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+
+        {/* Gross Sales Volume */}
+        <div className="pos-kpi-card" style={{ background: '#ffffff', padding: '1.25rem 1.5rem', borderRadius: '1.25rem', border: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'start', position: 'relative' }}>
+          <div>
+            <span style={{ fontSize: '0.78rem', color: 'var(--muted)', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }}>GROSS SALES VOLUME</span>
+            <strong style={{ display: 'block', fontSize: '2.2rem', fontWeight: 900, color: 'var(--ink)', margin: '0.4rem 0 0.15rem 0' }}>
+              {formatPrice(derivedStats.revenue)}
+            </strong>
+            <span style={{ fontSize: '0.78rem', color: 'var(--muted)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              📊 {derivedStats.ordersCount} total orders processed
+            </span>
+          </div>
+          <div style={{ background: '#fef3c7', width: '2.2rem', height: '2.2rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+            💰
+          </div>
+        </div>
+
+        {/* Completed Orders */}
+        <div className="pos-kpi-card" style={{ background: '#ffffff', padding: '1.25rem 1.5rem', borderRadius: '1.25rem', border: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'start', position: 'relative' }}>
+          <div>
+            <span style={{ fontSize: '0.78rem', color: 'var(--muted)', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }}>COMPLETED ORDERS</span>
+            <strong style={{ display: 'block', fontSize: '2.2rem', fontWeight: 900, color: 'var(--ink)', margin: '0.4rem 0 0.15rem 0' }}>
+              {derivedStats.deliveredOrders}
+            </strong>
+            <span style={{ fontSize: '0.78rem', color: 'var(--muted)', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+              <span style={{ color: 'var(--green)' }}>●</span> {(() => {
+                const completionRate = derivedStats.ordersCount > 0 ? Math.round((derivedStats.deliveredOrders / derivedStats.ordersCount) * 100) : 0;
+                return `${completionRate}% completion success rate`;
+              })()}
+            </span>
+          </div>
+          <div style={{ background: '#dcfce7', width: '2.2rem', height: '2.2rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+            ✅
+          </div>
+        </div>
+
+
+        {/* Live Active Work Queue */}
+        <div className="pos-kpi-card" style={{ background: '#ffffff', padding: '1.25rem 1.5rem', borderRadius: '1.25rem', border: '1px solid var(--line)', display: 'flex', justifyContent: 'space-between', alignItems: 'start', position: 'relative' }}>
+          <div>
+            <span style={{ fontSize: '0.78rem', color: 'var(--muted)', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }}>LIVE ACTIVE WORK QUEUE</span>
+            <strong style={{ display: 'block', fontSize: '2.2rem', fontWeight: 900, color: 'var(--ink)', margin: '0.4rem 0 0.15rem 0' }}>
+              {derivedStats.activeOrders}
+            </strong>
+            <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+              <span style={{ background: '#fff0d8', color: 'var(--amber)', fontSize: '0.7rem', fontWeight: 900, padding: '0.1rem 0.45rem', borderRadius: '0.35rem' }}>
+                {derivedStats.pendingOrders} PND
+              </span>
+              <span style={{ background: '#e5f1fc', color: 'var(--blue)', fontSize: '0.7rem', fontWeight: 900, padding: '0.1rem 0.45rem', borderRadius: '0.35rem' }}>
+                {derivedStats.cookingOrders || 0} CK
+              </span>
+              <span style={{ background: '#e7f7ed', color: 'var(--green)', fontSize: '0.7rem', fontWeight: 900, padding: '0.1rem 0.45rem', borderRadius: '0.35rem' }}>
+                {derivedStats.readyOrders} RDY
+              </span>
+            </div>
+          </div>
+          <div style={{ background: '#ffe4e6', width: '2.2rem', height: '2.2rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.1rem' }}>
+            🔥
+          </div>
+        </div>
+      </section>
 
       {/* THIRD ROW - TOP SELLING ITEMS AND PEAK HOURS */}
       <div className="pos-two-column-layout">
@@ -872,8 +854,8 @@ export default function AdminPage() {
                       <strong style={{ color: 'var(--primary)' }}>{item.qty} portions</strong>
                     </div>
                     <div className="progress-track" style={{ background: 'var(--line)', height: '8px', borderRadius: '50px', overflow: 'hidden' }}>
-                      <div 
-                        className="progress-fill" 
+                      <div
+                        className="progress-fill"
                         style={{ width: `${pct}%`, background: 'var(--green)', height: '100%', borderRadius: '50px' }}
                       ></div>
                     </div>
@@ -888,13 +870,13 @@ export default function AdminPage() {
         <section className="panel peak-hours-card">
           <h2>Peak Dining Hours</h2>
           <p className="kpi-subtext" style={{ color: 'var(--muted)', fontWeight: 700, margin: '0.25rem 0 1rem 0' }}>Hourly order volumes across peak shifts</p>
-          
+
           {filteredOrders.length === 0 ? (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '180px', color: 'var(--muted)', fontWeight: 800 }}>
               No peak hour records
             </div>
           ) : (
-            <div className="peak-hours-graph-wrapper" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: '180px', padding: '1rem 0 0.5rem 0', gap: '0.5rem', background: '#faf9f6', borderRadius: '1rem', border: '1px solid var(--line)' }}>
+            <div className="peak-hours-graph-wrapper" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', height: '180px', padding: '1rem 0 0.5rem 0', gap: '0.5rem', background: '#ffffff', borderRadius: '1rem', border: '1px solid var(--line)' }}>
               {getPeakHours().map(([hourLabel, count]) => {
                 const maxCount = Math.max(...getPeakHours().map(([, c]) => c)) || 1;
                 const heightPct = (count / maxCount) * 80;
@@ -913,212 +895,69 @@ export default function AdminPage() {
         </section>
       </div>
 
-      {/* SECTION - DAILY & MONTHLY ANALYTICS TABLES */}
-      <div className="pos-two-column-layout">
-        <section className="panel daily-analytics-panel">
-          <h2>📅 Daily Revenue Breakdown</h2>
-          <div className="admin-table-container" style={{ overflowY: 'auto', maxHeight: '280px', marginTop: '1rem' }}>
-            <table className="menu-table admin-orders-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Orders</th>
-                  <th>Revenue</th>
-                  <th>AOV</th>
-                </tr>
-              </thead>
-              <tbody>
-                {getDailyRevenue(filteredOrders).length === 0 ? (
-                  <tr>
-                    <td colSpan="4" style={{ textAlign: 'center', color: 'var(--muted)' }}>No daily data available</td>
-                  </tr>
-                ) : (
-                  getDailyRevenue(filteredOrders).map(row => (
-                    <tr key={row.dateStr}>
-                      <td data-label="Date"><strong>{row.dateStr}</strong></td>
-                      <td data-label="Orders">{row.count}</td>
-                      <td data-label="Revenue" className="text-green"><strong>{formatPrice(row.revenue)}</strong></td>
-                      <td data-label="AOV"><strong>{formatPrice(row.count > 0 ? row.revenue / row.count : 0)}</strong></td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
 
-        <section className="panel monthly-analytics-panel">
-          <h2>📊 Monthly Revenue Breakdown</h2>
-          <div className="admin-table-container" style={{ overflowY: 'auto', maxHeight: '280px', marginTop: '1rem' }}>
-            <table className="menu-table admin-orders-table">
-              <thead>
-                <tr>
-                  <th>Month</th>
-                  <th>Orders</th>
-                  <th>Revenue</th>
-                  <th>AOV</th>
-                </tr>
-              </thead>
-              <tbody>
-                {getMonthlyRevenue(filteredOrders).length === 0 ? (
-                  <tr>
-                    <td colSpan="4" style={{ textAlign: 'center', color: 'var(--muted)' }}>No monthly data available</td>
-                  </tr>
-                ) : (
-                  getMonthlyRevenue(filteredOrders).map(row => (
-                    <tr key={row.monthStr}>
-                      <td data-label="Month"><strong>{row.monthStr}</strong></td>
-                      <td data-label="Orders">{row.count}</td>
-                      <td data-label="Revenue" className="text-green"><strong>{formatPrice(row.revenue)}</strong></td>
-                      <td data-label="AOV"><strong>{formatPrice(row.count > 0 ? row.revenue / row.count : 0)}</strong></td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-
-      {/* FOURTH ROW - BEST PERFORMING ITEMS, RECENT ACTIVITY, AND QUICK ACTIONS */}
-      <div className="pos-three-column-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: '1.5rem', alignItems: 'stretch' }}>
-        
-        {/* SECTION 8 — BEST PERFORMING ITEMS */}
-        <section className="panel best-performing-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <h2>Best Performing Insights</h2>
-          {filteredOrders.length === 0 ? (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '130px', color: 'var(--muted)', fontWeight: 800 }}>
-              No insights available
-            </div>
-          ) : (
-            <div className="best-performing-content" style={{ display: 'flex', flexDirection: 'column', gap: '1rem', flex: 1, justifyContent: 'center' }}>
-              <div className="best-performing-item-row" style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                <div style={{ background: '#e8f4ec', width: '2.5rem', height: '2.5rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>👑</div>
-                <div>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', fontWeight: 800 }}>Most Sold Item</span>
-                  <strong style={{ fontSize: '1.1rem', color: 'var(--ink)' }}>{derivedStats.mostSoldItem}</strong>
-                </div>
-              </div>
-              <div className="best-performing-item-row" style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                <div style={{ background: '#e5f1fc', width: '2.5rem', height: '2.5rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>🍽️</div>
-                <div>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', fontWeight: 800 }}>Most Ordered Portion</span>
-                  <strong style={{ fontSize: '1.1rem', color: 'var(--ink)' }}>{derivedStats.mostOrderedPortion} Portion</strong>
-                </div>
-              </div>
-              <div className="best-performing-item-row" style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                <div style={{ background: '#fff0d8', width: '2.5rem', height: '2.5rem', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.25rem' }}>🛍️</div>
-                <div>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--muted)', display: 'block', fontWeight: 800 }}>Most Popular Category</span>
-                  <strong style={{ fontSize: '1.1rem', color: 'var(--ink)' }}>{derivedStats.mostPopularType}</strong>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* SECTION 6 — RECENT ACTIVITY */}
-        <section className="panel recent-activities-card">
-          <h2>Recent Operations Log</h2>
-          {getRecentActivities().length === 0 ? (
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', minHeight: '130px', color: 'var(--muted)', fontWeight: 800 }}>
-              No operations logged
-            </div>
-          ) : (
-            <ul className="activities-feed-list" style={{ listStyle: 'none', padding: 0, margin: '1rem 0 0 0', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              {getRecentActivities().map((activity, idx) => (
-                <li key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', paddingBottom: '0.5rem', borderBottom: '1px solid #f9f9f9' }}>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'start' }}>
-                    <span style={{ color: activity.type === 'green' ? 'var(--green)' : activity.type === 'yellow' ? 'var(--amber)' : 'var(--blue)', fontSize: '0.9rem' }}>●</span>
-                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--ink)' }}>{activity.text}</span>
-                  </div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--muted)', fontWeight: 800, whiteSpace: 'nowrap' }}>{activity.time}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        {/* SECTION 7 — QUICK ACTIONS */}
-        <section className="panel quick-actions-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          <h2>Quick Actions Panel</h2>
-          <div className="quick-actions-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', flex: 1, alignContent: 'center' }}>
-            <NavLink to="/menu" className="quick-action-btn" style={{ textDecoration: 'none', background: 'var(--blue)', color: 'white', padding: '0.85rem', borderRadius: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontWeight: 900, textAlign: 'center', border: 0 }}>
-              <span style={{ fontSize: '1.25rem' }}>🍔</span>
-              <span>Manage Menu</span>
-            </NavLink>
-            <button onClick={handleOrderFeedClick} className="quick-action-btn" style={{ background: 'var(--ink)', color: 'white', padding: '0.85rem', borderRadius: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontWeight: 900, textAlign: 'center', border: 0, cursor: 'pointer' }}>
-              <span style={{ fontSize: '1.25rem' }}>📋</span>
-              <span>Order Feed</span>
-            </button>
-            <button onClick={handleCloudBackup} className="quick-action-btn" style={{ background: 'var(--primary)', color: 'white', padding: '0.85rem', borderRadius: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontWeight: 900, textAlign: 'center', border: 0, cursor: 'pointer' }}>
-              <span style={{ fontSize: '1.25rem' }}>☁️</span>
-              <span>Backup Cloud</span>
-            </button>
-            <button onClick={handleExportPDF} className="quick-action-btn" style={{ background: 'var(--green)', color: 'white', padding: '0.85rem', borderRadius: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontWeight: 900, textAlign: 'center', border: 0, cursor: 'pointer' }}>
-              <span style={{ fontSize: '1.25rem' }}>📄</span>
-              <span>Export PDF</span>
-            </button>
-          </div>
-        </section>
-      </div>
-
-      {/* SYSTEM TOOLS PANEL */}
-      <section className="panel system-tools-panel" style={{ marginTop: '1.5rem', borderLeft: '6px solid var(--primary)' }}>
-        <h2>⚙️ System Tools</h2>
-        <p className="kpi-subtext" style={{ margin: '0.25rem 0 1rem 0', color: 'var(--muted)' }}>
-          System operations for administrators and software deployment setup.
-        </p>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
-          <button 
-            type="button" 
-            className="btn-toggle active" 
-            onClick={() => setShowResetConfirm(true)}
-            style={{ background: 'var(--primary)', color: 'white', fontWeight: 900, padding: '0.65rem 1.5rem', border: 0, cursor: 'pointer', borderRadius: '0.75rem' }}
-          >
-            ⚠️ Factory Reset
+      {/* QUICK ACTIONS PANEL */}
+      <section className="panel quick-actions-card" style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1.5rem', padding: '1.75rem 2rem' }}>
+        <h2>Quick Actions Panel</h2>
+        <div className="quick-actions-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1.5rem' }}>
+          <NavLink to="/menu" className="quick-action-btn" style={{ textDecoration: 'none', background: 'linear-gradient(135deg, #1b507f 0%, #1769aa 100%)', color: 'white', padding: '1.5rem 1.25rem', borderRadius: '1.25rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 900, textAlign: 'center', border: '1px solid rgba(0, 0, 0, 0.15)', boxShadow: '0 8px 16px rgba(0, 0, 0, 0.3), inset 0 2px 3px rgba(255, 255, 255, 0.25)' }}>
+            <span style={{ fontSize: '1.75rem' }}>🍔</span>
+            <span>Manage Menu</span>
+          </NavLink>
+          <button onClick={handleOrderFeedClick} className="quick-action-btn" style={{ background: 'linear-gradient(135deg, #2c2520 0%, #15100d 100%)', color: 'white', padding: '1.5rem 1.25rem', borderRadius: '1.25rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 900, textAlign: 'center', cursor: 'pointer', border: '1px solid rgba(0, 0, 0, 0.25)', boxShadow: '0 8px 16px rgba(0, 0, 0, 0.45), inset 0 2px 3px rgba(255, 255, 255, 0.2)' }}>
+            <span style={{ fontSize: '1.75rem' }}>📋</span>
+            <span>Order Feed</span>
           </button>
-          <span style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--muted)' }}>
-            <strong>WARNING:</strong> Destructive deployment setup tool. Resets all database logs, counters, and menu configuration.
-          </span>
+          <button onClick={handleCloudBackup} className="quick-action-btn" style={{ background: 'linear-gradient(135deg, #c0392b 0%, #e74c3c 100%)', color: 'white', padding: '1.5rem 1.25rem', borderRadius: '1.25rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 900, textAlign: 'center', cursor: 'pointer', border: '1px solid rgba(0, 0, 0, 0.15)', boxShadow: '0 8px 16px rgba(0, 0, 0, 0.3), inset 0 2px 3px rgba(255, 255, 255, 0.25)' }}>
+            <span style={{ fontSize: '1.75rem' }}>☁️</span>
+            <span>Backup Cloud</span>
+          </button>
+          <button onClick={handleExportPDF} className="quick-action-btn" style={{ background: 'linear-gradient(135deg, #0d5f30 0%, #138a45 100%)', color: 'white', padding: '1.5rem 1.25rem', borderRadius: '1.25rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 900, textAlign: 'center', cursor: 'pointer', border: '1px solid rgba(0, 0, 0, 0.15)', boxShadow: '0 8px 16px rgba(0, 0, 0, 0.3), inset 0 2px 3px rgba(255, 255, 255, 0.25)' }}>
+            <span style={{ fontSize: '1.75rem' }}>📄</span>
+            <span>Export PDF</span>
+          </button>
         </div>
       </section>
 
       {/* SECTION - SEARCHABLE ORDER HISTORY FEED */}
-      <section className="panel master-orders-panel" style={{ marginTop: '1.5rem' }} ref={orderFeedRef}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
-          <h2>📋 Searchable Order History Feed</h2>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button onClick={handleExportCSV} className="btn-toggle active" style={{ background: 'var(--ink)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.5rem 1rem', border: 0, cursor: 'pointer' }}>
-              📥 Export CSV
+      <section className="panel master-orders-panel" style={{ marginTop: '1.5rem', background: '#ffffff', borderRadius: '1.5rem', padding: '2rem', border: '1px solid var(--line)' }} ref={orderFeedRef}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.5rem' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.6rem', fontWeight: 900, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              📋 Order History
+            </h2>
+            <p style={{ margin: '0.2rem 0 0 0', color: 'var(--muted)', fontSize: '0.85rem', fontWeight: 700 }}>
+              Search, query, filter, and inspect detailed historic order transactions.
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button onClick={handleExportCSV} className="quick-action-btn" style={{ background: 'white', border: '1px solid var(--line)', color: 'var(--ink)', padding: '0.55rem 1.2rem', borderRadius: '999px', fontWeight: 900, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              📥 CSV Ledger
             </button>
-            <button onClick={handleExportPDF} className="btn-toggle active" style={{ background: 'var(--green)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.5rem 1rem', border: 0, cursor: 'pointer' }}>
-              📄 Export PDF
-            </button>
-            <button onClick={() => window.print()} className="btn-toggle active" style={{ background: 'var(--blue)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.25rem', padding: '0.5rem 1rem', border: 0, cursor: 'pointer' }}>
-              🖨️ Print Report
+            <button onClick={handleExportPDF} className="quick-action-btn" style={{ background: '#211a14', color: 'white', border: 'none', padding: '0.55rem 1.4rem', borderRadius: '999px', fontWeight: 900, fontSize: '0.85rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              📄 Export sales report PDF
             </button>
           </div>
         </div>
 
         {/* History Search Filters Grid */}
-        <div className="history-filters-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', marginTop: '1.25rem', padding: '1rem', background: '#faf9f6', borderRadius: '1rem', border: '1px solid var(--line)' }}>
+        <div className="history-filters-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginTop: '1rem', padding: '0.85rem 1.25rem', background: '#f4f4f5', borderRadius: '1.25rem', border: '1px solid var(--line)', marginBottom: '1.5rem' }}>
           <div>
-            <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--muted)', display: 'block', marginBottom: '0.3rem' }}>Token Search</label>
-            <input 
-              type="text" 
-              placeholder="e.g. 101" 
-              value={historySearchToken} 
-              onChange={e => setHistorySearchToken(e.target.value)} 
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid var(--line)', fontWeight: 700 }}
+            <label style={{ fontSize: '0.72rem', fontWeight: 900, color: 'var(--muted)', display: 'block', marginBottom: '0.35rem', letterSpacing: '0.04em' }}>TOKEN SEARCH</label>
+            <input
+              type="text"
+              placeholder="e.g. 101"
+              value={historySearchToken}
+              onChange={e => setHistorySearchToken(e.target.value)}
+              style={{ width: '100%', padding: '0.45rem 0.75rem', borderRadius: '0.65rem', border: '1px solid var(--line)', fontWeight: 700, background: '#ffffff', fontSize: '0.85rem' }}
             />
           </div>
           <div>
-            <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--muted)', display: 'block', marginBottom: '0.3rem' }}>Status</label>
-            <select 
-              value={historySearchStatus} 
+            <label style={{ fontSize: '0.72rem', fontWeight: 900, color: 'var(--muted)', display: 'block', marginBottom: '0.35rem', letterSpacing: '0.04em' }}>STATUS FILTER</label>
+            <select
+              value={historySearchStatus}
               onChange={e => setHistorySearchStatus(e.target.value)}
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid var(--line)', fontWeight: 700, background: 'white' }}
+              style={{ width: '100%', padding: '0.45rem 0.75rem', borderRadius: '0.65rem', border: '1px solid var(--line)', fontWeight: 700, background: '#ffffff', fontSize: '0.85rem' }}
             >
               <option value="ALL">All Statuses</option>
               <option value="PENDING">Pending</option>
@@ -1128,11 +967,11 @@ export default function AdminPage() {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--muted)', display: 'block', marginBottom: '0.3rem' }}>Type</label>
-            <select 
-              value={historySearchType} 
+            <label style={{ fontSize: '0.72rem', fontWeight: 900, color: 'var(--muted)', display: 'block', marginBottom: '0.35rem', letterSpacing: '0.04em' }}>TYPE FILTER</label>
+            <select
+              value={historySearchType}
               onChange={e => setHistorySearchType(e.target.value)}
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid var(--line)', fontWeight: 700, background: 'white' }}
+              style={{ width: '100%', padding: '0.45rem 0.75rem', borderRadius: '0.65rem', border: '1px solid var(--line)', fontWeight: 700, background: '#ffffff', fontSize: '0.85rem' }}
             >
               <option value="ALL">All Types</option>
               <option value="DINE_IN">Dine In</option>
@@ -1140,82 +979,89 @@ export default function AdminPage() {
             </select>
           </div>
           <div>
-            <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--muted)', display: 'block', marginBottom: '0.3rem' }}>Table Number</label>
-            <input 
-              type="text" 
-              placeholder="e.g. 5" 
-              value={historySearchTable} 
-              onChange={e => setHistorySearchTable(e.target.value)} 
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid var(--line)', fontWeight: 700 }}
+            <label style={{ fontSize: '0.72rem', fontWeight: 900, color: 'var(--muted)', display: 'block', marginBottom: '0.35rem', letterSpacing: '0.04em' }}>TABLE NUMBER</label>
+            <input
+              type="text"
+              placeholder="e.g. 5"
+              value={historySearchTable}
+              onChange={e => setHistorySearchTable(e.target.value)}
+              style={{ width: '100%', padding: '0.45rem 0.75rem', borderRadius: '0.65rem', border: '1px solid var(--line)', fontWeight: 700, background: '#ffffff', fontSize: '0.85rem' }}
             />
           </div>
           <div>
-            <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--muted)', display: 'block', marginBottom: '0.3rem' }}>From Date</label>
-            <input 
-              type="date" 
-              value={historySearchFrom} 
-              onChange={e => setHistorySearchFrom(e.target.value)} 
-              style={{ width: '100%', padding: '0.45rem', borderRadius: '0.5rem', border: '1px solid var(--line)', fontWeight: 700 }}
+            <label style={{ fontSize: '0.72rem', fontWeight: 900, color: 'var(--muted)', display: 'block', marginBottom: '0.35rem', letterSpacing: '0.04em' }}>FROM DATE</label>
+            <input
+              type="date"
+              value={historySearchFrom}
+              onChange={e => setHistorySearchFrom(e.target.value)}
+              style={{ width: '100%', padding: '0.45rem 0.75rem', borderRadius: '0.65rem', border: '1px solid var(--line)', fontWeight: 700, background: '#ffffff', fontSize: '0.85rem' }}
             />
           </div>
           <div>
-            <label style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--muted)', display: 'block', marginBottom: '0.3rem' }}>To Date</label>
-            <input 
-              type="date" 
-              value={historySearchTo} 
-              onChange={e => setHistorySearchTo(e.target.value)} 
-              style={{ width: '100%', padding: '0.45rem', borderRadius: '0.5rem', border: '1px solid var(--line)', fontWeight: 700 }}
+            <label style={{ fontSize: '0.72rem', fontWeight: 900, color: 'var(--muted)', display: 'block', marginBottom: '0.35rem', letterSpacing: '0.04em' }}>TO DATE</label>
+            <input
+              type="date"
+              value={historySearchTo}
+              onChange={e => setHistorySearchTo(e.target.value)}
+              style={{ width: '100%', padding: '0.45rem 0.75rem', borderRadius: '0.65rem', border: '1px solid var(--line)', fontWeight: 700, background: '#ffffff', fontSize: '0.85rem' }}
             />
           </div>
         </div>
 
         {/* History Table */}
-        <div className="admin-table-container" style={{ overflowY: 'auto', maxHeight: '420px', marginTop: '1.25rem' }}>
-          <table className="menu-table admin-orders-table">
+        <div className="admin-table-container" style={{ overflowX: 'auto', marginTop: '1rem', border: '1px solid var(--line)', borderRadius: '1.25rem' }}>
+          <table className="menu-table admin-orders-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
-              <tr>
-                <th>Token</th>
-                <th>Date</th>
-                <th>Type</th>
-                <th>Total</th>
-                <th>Status</th>
-                <th>Actions</th>
+              <tr style={{ background: '#fbf6f0' }}>
+                <th style={{ padding: '1rem', color: 'var(--muted)', fontWeight: 900, borderBottom: '1px solid var(--line)' }}>Token</th>
+                <th style={{ padding: '1rem', color: 'var(--muted)', fontWeight: 900, borderBottom: '1px solid var(--line)' }}>Date</th>
+                <th style={{ padding: '1rem', color: 'var(--muted)', fontWeight: 900, borderBottom: '1px solid var(--line)' }}>Type</th>
+                <th style={{ padding: '1rem', color: 'var(--muted)', fontWeight: 900, borderBottom: '1px solid var(--line)' }}>Total Bill</th>
+                <th style={{ padding: '1rem', color: 'var(--muted)', fontWeight: 900, borderBottom: '1px solid var(--line)' }}>Status</th>
+                <th style={{ padding: '1rem', color: 'var(--muted)', fontWeight: 900, borderBottom: '1px solid var(--line)' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {getFilteredHistoryOrders().length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="empty-state" style={{ textAlign: 'center' }}>
-                    No matching history records found.
+                  <td colSpan="6" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.85rem' }}>
+                      <div style={{ fontSize: '2.5rem', opacity: 0.65 }}>📄</div>
+                      <div>
+                        <strong style={{ display: 'block', fontSize: '1rem', color: 'var(--ink)', fontWeight: 800 }}>No matching ledger records</strong>
+                        <span style={{ fontSize: '0.85rem', color: 'var(--muted)', fontWeight: 700 }}>Adjust your filters or query params to find entries</span>
+                      </div>
+                    </div>
                   </td>
                 </tr>
               ) : (
                 [...getFilteredHistoryOrders()].reverse().map(order => {
                   const orderPrice = order.items?.reduce((sum, item) => sum + (item.total_price || 0), 0) || 0;
                   return (
-                    <tr key={order.id} className={expandedOrder === order.id ? 'row-expanded-highlight' : ''}>
-                      <td data-label="Token"><strong>#{order.token_number}</strong></td>
-                      <td data-label="Date">{order.created_at ? parseSQLDate(order.created_at).toLocaleString() : ''}</td>
-                      <td data-label="Type">
+                    <tr key={order.id} className={expandedOrder === order.id ? 'row-expanded-highlight' : ''} style={{ borderBottom: '1px solid var(--line)' }}>
+                      <td data-label="Token" style={{ padding: '1rem' }}><strong>#{order.token_number}</strong></td>
+                      <td data-label="Date" style={{ padding: '1rem' }}>{order.created_at ? parseSQLDate(order.created_at).toLocaleString() : ''}</td>
+                      <td data-label="Type" style={{ padding: '1rem' }}>
                         {order.order_type === 'DINE_IN' ? '🍽 Dine In' : '🛍 Parcel'}
                       </td>
-                      <td data-label="Total"><strong>{formatPrice(orderPrice)}</strong></td>
-                      <td data-label="Status">
-                        <span className={`status-pill`} style={{
+                      <td data-label="Total Bill" style={{ padding: '1rem' }}><strong>{formatPrice(orderPrice)}</strong></td>
+                      <td data-label="Status" style={{ padding: '1rem' }}>
+                        <span className="status-pill" style={{
                           background: order.status === 'PENDING' ? '#fff0d8' :
-                                      order.status === 'COOKING' ? '#e5f1fc' :
-                                      order.status === 'READY' ? '#e7f7ed' : '#eee',
+                            order.status === 'COOKING' ? '#e5f1fc' :
+                              order.status === 'READY' ? '#e7f7ed' : '#eee',
                           color: order.status === 'PENDING' ? 'var(--amber)' :
-                                 order.status === 'COOKING' ? 'var(--blue)' :
-                                 order.status === 'READY' ? 'var(--green)' : 'var(--muted)'
+                            order.status === 'COOKING' ? 'var(--blue)' :
+                              order.status === 'READY' ? 'var(--green)' : 'var(--muted)',
+                          fontWeight: 900
                         }}>
                           {order.status}
                         </span>
                       </td>
-                      <td data-label="Actions">
-                        <button 
-                          className="btn-toggle active" 
-                          style={{ margin: 0, padding: '0.35rem 0.75rem' }}
+                      <td data-label="Actions" style={{ padding: '1rem' }}>
+                        <button
+                          className="btn-toggle active"
+                          style={{ margin: 0, padding: '0.4rem 0.85rem', borderRadius: '0.5rem', background: '#211a14', color: '#ffffff', cursor: 'pointer' }}
                           onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
                         >
                           {expandedOrder === order.id ? 'Collapse' : 'Details'}
@@ -1270,46 +1116,6 @@ export default function AdminPage() {
                 </div>
               );
             })()}
-          </div>
-        </div>
-      )}
-
-      {/* Factory Reset Confirmation Modal */}
-      {showResetConfirm && (
-        <div className="modal-overlay" onClick={() => setShowResetConfirm(false)} style={{ zIndex: 11000 }}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
-            <header className="modal-header" style={{ borderBottom: '1px solid var(--line)', paddingBottom: '0.75rem' }}>
-              <h2 style={{ color: 'var(--primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>⚠️ Factory Reset</h2>
-              <button className="btn-close-modal" onClick={() => setShowResetConfirm(false)}>×</button>
-            </header>
-            <div className="modal-body" style={{ padding: '1.5rem 0' }}>
-              <p style={{ fontWeight: 800, color: 'var(--ink)', fontSize: '1rem', margin: '0 0 1rem 0' }}>
-                This will permanently remove all business data and return the application to a fresh installation state.
-              </p>
-              <div style={{ background: '#fff0f0', border: '1px solid #ffcccc', padding: '1rem', borderRadius: '0.75rem', color: 'var(--primary)', fontWeight: 800, fontSize: '0.85rem' }}>
-                <strong>This action cannot be undone.</strong> All orders, menu items, price availability states, generated stats, and counters will be completely wiped out.
-              </div>
-            </div>
-            <footer className="modal-footer" style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', borderTop: '1px solid var(--line)', paddingTop: '0.75rem' }}>
-              <button 
-                type="button" 
-                className="btn-cancel" 
-                onClick={() => setShowResetConfirm(false)}
-                disabled={resetting}
-                style={{ width: 'auto', padding: '0.6rem 1.5rem' }}
-              >
-                Cancel
-              </button>
-              <button 
-                type="button" 
-                className="primary-action btn-confirm-add" 
-                onClick={handleFactoryReset}
-                disabled={resetting}
-                style={{ background: 'var(--primary)', borderColor: 'var(--primary)', width: 'auto', padding: '0.6rem 1.5rem', marginTop: 0 }}
-              >
-                {resetting ? 'Resetting...' : 'Factory Reset'}
-              </button>
-            </footer>
           </div>
         </div>
       )}

@@ -18,5 +18,8 @@
   ],
   "allowScripts": {
     "better-sqlite3@12.10.0": true
+  },
+  "devDependencies": {
+    "puppeteer-core": "^25.1.0"
   }
 }

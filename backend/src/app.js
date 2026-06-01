@@ -5,6 +5,7 @@ import express from 'express';
 import { config } from './config.js';
 import { menuRouter } from './routes/menuRoutes.js';
 import { orderRouter } from './routes/orderRoutes.js';
+import { authRouter } from './routes/authRoutes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,7 +22,9 @@ export function createApp() {
   });
 
   app.use('/api/menu', menuRouter);
+  app.use('/api/auth', authRouter);
   app.use('/api', orderRouter);
+
 
   if (process.env.NODE_ENV === 'production') {
     app.use(express.static(frontendDistPath));

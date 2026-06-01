@@ -15,6 +15,8 @@ import {
 } from '../services/orderService.js';
 import { saveMenuItems } from '../services/menuService.js';
 import { validateOrderPayload, validateStatus } from '../utils/validation.js';
+import { db } from '../database/db.js';
+import { verifyPassword } from '../utils/crypto.js';
 
 export const orderRouter = Router();
 
@@ -126,6 +128,16 @@ orderRouter.get('/aggregation', (req, res, next) => {
 
 orderRouter.post('/system/reset', (req, res, next) => {
   try {
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({ message: 'Admin password is required for factory reset.' });
+    }
+
+    const adminUser = db.prepare("SELECT * FROM users WHERE role = 'admin'").get();
+    if (!adminUser || !verifyPassword(password, adminUser.password_hash)) {
+      return res.status(401).json({ message: 'Incorrect Admin password. Factory reset unauthorized.' });
+    }
+
     factoryResetSystem();
     emitDataChanged('snapshot', { readyOrders: [], activeOrders: [] });
     res.json({ success: true, message: 'Factory Reset Completed Successfully.' });
